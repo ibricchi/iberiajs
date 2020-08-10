@@ -38,23 +38,6 @@ class ib_parser{
     }
 }
 
-class ib_token_list{
-    constructor(tokens){
-        this.current = 0;
-        this.tokens = tokens;
-        this.size = tokens.length;
-    }
-
-    is_at_end(){
-        return this.current == this.size;
-    }
-
-    advance(){
-        if(this.is_at_end()) return null;
-        return this.file[this.current];
-    }
-}
-
 //#endregion
 
 //#region ib
@@ -111,6 +94,30 @@ class ib{
         return array.filter((el) => {
             return el.trim() !== '';
         });
+    }
+
+    static scope_map(variables){
+        var newMap = new Map();
+        Object.keys(variables).forEach(key => {
+            newMap[key] = variables[key];
+        })
+        return newMap;
+    }
+
+    static is_block(token){
+        if(token.info.size == 0){
+            return false;
+        }
+        let name = token.info[0];
+        switch(name){
+            case "for":
+            case "foreach":
+            case "define":
+            case "md":
+                return true;
+            default:
+                return false;
+        }
     }
 
     //#endregion
@@ -200,23 +207,60 @@ class ib{
 
     //#endregion
 
+    //#region subset
+
+    static subset(tokens){
+        let new_tokens = [];
+
+        while(tokens.length != 0){
+            if(tokens[0].type == ib_token_types.COMMAND){
+                if(tokens[0].info.size < 1){
+                    console.log("Empty command found");
+                }
+                else if(this.is_block(tokens[0])){
+                    new_tokens.push(tokens[0]);
+                    tokens.shift();
+                    new_tokens[new_tokens.length - 1].block = this.subset(tokens);
+                }
+                else if(tokens[0].info[0] == "end"){
+                    tokens.shift();
+                    return new_tokens;
+                }
+            }
+            if(tokens.length != 0){
+                new_tokens.push(tokens[0]);
+                tokens.shift();
+            }
+        }
+
+        return new_tokens;
+    }
+
+    //#endregion
 
     //#region execute
 
     static async execute(html, variables){
-        let tokens = new ib_token_list(this.parse(html));
+        let tokens = this.parse(html);
+        tokens = this.subset(tokens);
 
-        html = [];
+        html = this.execute_tokens(tokens, variables);
 
-        for(let i = 0; i < tokens.size; i++){
+        return html;
+    }
+
+    static async execute_tokens(tokens, variables){
+        let html = [];
+
+        for(let i = 0; i < tokens.length; i++){
             let new_line;
-            let token = tokens.tokens[i];
+            let token = tokens[i];
             switch(token.type){
                 case ib_token_types.COMMAND:
-                    new_line = await this.command(token.info, variables);
+                    new_line = await this.command(token, variables);
                     break;
                 case ib_token_types.VARIABLE:
-                    new_line = await this.variable(token.info, variables);
+                    new_line = await this.variable(token, variables);
                     break;
                 case ib_token_types.HTML:
                     new_line = token.info;
@@ -230,49 +274,112 @@ class ib{
 
     //#region command
 
-    static async command(tokens, variables){
-        if(tokens.length == 0){
+    static async command(token, variables){
+        if(token.length == 0){
             console.error("Empty command found.");
             return "null";
         }
 
-        return tokens.join("");
-
-        // switch(tokens[0]){
-        //     case "for":
-        //         return command_for(tokens, variables);
+        switch(token.info[0]){
+            case "for":
+                return this.command_for(token, variables);
         //     case "foreach":
-        //         return command_foreach(tokens, variables);
+        //         return this.command_foreach(tokens, variables);
         //     case "load":
-        //         return command_load(tokens, variables);
+        //         return this.command_load(tokens, variables);
         //     case "define":
-        //         await command_define(tokens, variables);
+        //         await this.command_define(tokens, variables);
         //         break;
-        //     case "var":
-        //         return command_var(tokens, variables);
         //     case "md":
-        //         return command_md(tokesn, variables);
+        //         return this.command_md(tokesn, variables);
         //     default:
         //         console.error("Unknown command found.");
         //         return "null";
-        // }
+        }
     }
 
-    static async variable(tokens, variables){
-        if(tokens.length == 0){
+    static async command_for(token, variables){
+        variables = this.scope_map(variables);
+        if(token.info.length < 6) return null;
+
+        let loopVariables = token.info[1].split(",");
+        let loopCompVar = token.info[2];
+        let loopCompComp = token.info[3];
+        
+        let loopCompConst = token.info[4];
+        if(loopCompConst[0] == "#"){
+            loopCompConst = ib_inline_var(variables, loopCompConst.slice(1));
+        }else{
+            loopCompConst = parseFloat(loopCompConst);
+        }
+
+        let loopEnd = token.info[5].split(",");
+
+        for(let i = 0; i < loopVariables.length; i++){
+            let loopVariable = loopVariables[i].split("=");
+            let varName = loopVariable[0];
+            let varValue = loopVariable.length==2?parseFloat(loopVariable[1]):0
+            variables[varName] = varValue;
+        }
+
+        function checkCondition(){
+            switch (loopCompComp) {
+                case "==":
+                    return variables[loopCompVar] == loopCompConst;
+                case "<":
+                    return variables[loopCompVar] < loopCompConst;
+                case "<=":
+                    return variables[loopCompVar] <= loopCompConst;
+                case ">":
+                    return variables[loopCompVar] > loopCompConst;
+                case ">=":
+                    return variables[loopCompVar] >= loopCompConst;
+                default:
+                    return false;
+            }
+        }
+
+        function doEnd(){
+            loopEnd.forEach((command) => {
+                let commandtokens = command.split("+=");
+                let commandVar = commandtokens[0];
+                let commandDelta = parseFloat(commandtokens[1]);
+                variables[commandVar] += commandDelta;
+            });
+        }
+
+        let html = [];
+
+        while(checkCondition()){
+            html.push(await this.execute_tokens(token.block, variables));
+            doEnd();
+        }
+
+        return html.join("");
+    }
+
+    //#endregion
+
+    //#region variable
+
+    static async variable(token, variables){
+        if(token.info.length == 0){
             console.error("Empty variable found.");
         }
 
-        let value = variables[tokens[0]];
+        let value = variables[token.info[0]];
 
         if(value == undefined){
-            console.error("Variable " + tokens[0] + " undefined.");
+            console.error("Variable " + token.info[0] + " undefined.");
+            return "null";
         }
 
-        if(tokens.length == 1){
+        if(token.info.length == 1){
             return value;
         }
     }
+
+    //#endregion
 
     //#endregion
 
