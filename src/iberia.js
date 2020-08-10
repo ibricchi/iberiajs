@@ -172,7 +172,7 @@ class ib{
         let cl = [];
 
         for(let char = parser.advance(); char != null && !parser.is_at_end() && char != "$"; char = parser.advance()){
-            if(char == "\\" && char.peek() == "$"){
+            if(char == "\\" && char.peek() == "$" && char.peek() == "#"){
                 cl.push(parser.advance());
             }
             else{
@@ -283,15 +283,15 @@ class ib{
         switch(token.info[0]){
             case "for":
                 return this.command_for(token, variables);
-        //     case "foreach":
-        //         return this.command_foreach(tokens, variables);
+            case "foreach":
+                return this.command_foreach(token, variables);
         //     case "load":
-        //         return this.command_load(tokens, variables);
+        //         return this.command_load(token, variables);
         //     case "define":
-        //         await this.command_define(tokens, variables);
+        //         await this.command_define(token, variables);
         //         break;
         //     case "md":
-        //         return this.command_md(tokesn, variables);
+        //         return this.command_md(token, variables);
         //     default:
         //         console.error("Unknown command found.");
         //         return "null";
@@ -300,7 +300,13 @@ class ib{
 
     static async command_for(token, variables){
         variables = this.scope_map(variables);
-        if(token.info.length < 6) return null;
+        if(token.info.length < 6){
+            console.error("Not enough parameters passed to for loop.");
+            return "null";
+        }
+        else if(token.info.length > 6){
+            console.warn("Too many parameters passed to for loop");
+        }
 
         let loopVariables = token.info[1].split(",");
         let loopCompVar = token.info[2];
@@ -358,21 +364,70 @@ class ib{
         return html.join("");
     }
 
+    static async command_foreach(token, variables){
+        variables = this.scope_map(variables);
+        
+        if(token.info.length < 3){
+            console.error("Not enough parameters passed to for loop.");
+            return "null";
+        }
+        else if(token.info.length > 4){
+            console.warn("Too many parameters passed to for loop");
+        }
+
+        let loopVar = token.info[1];
+        let loopArray = await this.direct_var(token.info[2], variables);
+        let loopModifier = token.info[3];
+
+        switch(loopModifier){
+            case "reversed":
+                loopArray = loopArray.reverse();
+                break;
+            case "alphabetical":
+                loopArray = loopArray.sort();
+            case "alphareverse":
+                loopArray = loopArray.sort().reverse();
+            case "increasing":
+                loopArray = loopArray.sort(function(a, b){return a - b});
+            case "decreasing":
+                loopArray = loopArray.sort(function(a, b){return b - a});
+            case "random":
+                loopArrau = loopArray.sort(function(a, b){return a - Math.random()});
+            default:
+                break;
+        }
+
+        let html = [];
+
+        for(let i = 0; i < loopArray.length; i++){
+            variables[loopVar] = loopArray[i];
+            html.push(await this.execute_tokens(token.block, variables));
+        }
+
+        return html.join("");
+    }
+
     //#endregion
 
     //#region variable
+
+    static async direct_var(name, variables){
+        let value = variables[name];
+
+        if(value == undefined){
+            console.error("Variable " + name + " undefined.");
+            return "null";
+        }
+
+        return value;
+    }
 
     static async variable(token, variables){
         if(token.info.length == 0){
             console.error("Empty variable found.");
         }
 
-        let value = variables[token.info[0]];
-
-        if(value == undefined){
-            console.error("Variable " + token.info[0] + " undefined.");
-            return "null";
-        }
+        let value = this.direct_var(token.info[0], variables);
 
         if(token.info.length == 1){
             return value;
