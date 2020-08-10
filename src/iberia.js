@@ -1,6 +1,6 @@
 import("./marked.min.js")
 
-//#region ib_token
+//#region ib_classes
 
 const ib_token_types = {
     COMMAND: 0,
@@ -15,8 +15,6 @@ class ib_token{
     }
 }
 
-//#region ib_parser
-
 class ib_parser{
     constructor(file){
         this.current = 0;
@@ -25,7 +23,7 @@ class ib_parser{
     }
 
     is_at_end(){
-        return this.current == this.size
+        return this.current == this.size;
     }
 
     advance(){
@@ -38,9 +36,22 @@ class ib_parser{
         if(this.is_at_end()) return null;
         return this.file[this.current];
     }
+}
 
-    goto(pos){
-        this.current = pos;
+class ib_token_list{
+    constructor(tokens){
+        this.current = 0;
+        this.tokens = tokens;
+        this.size = tokens.length;
+    }
+
+    is_at_end(){
+        return this.current == this.size;
+    }
+
+    advance(){
+        if(this.is_at_end()) return null;
+        return this.file[this.current];
     }
 }
 
@@ -74,7 +85,7 @@ class ib{
 
     static async get_ib_html(path, variables){
         let html = await this.get_file(path)
-        let tokens = this.parse(html, variables);
+        html = await this.execute(html, variables);
         return html;
     }
 
@@ -106,7 +117,7 @@ class ib{
 
     //#region parse
 
-    static parse(file, variables){
+    static parse(file){
         let tokens = [];
         let parser = new ib_parser(file);
 
@@ -185,6 +196,44 @@ class ib{
         tokens = this.remove_whitespace_items(tokens);
 
         return tokens;
+    }
+
+    //#endregion
+
+
+    //#region execute
+
+    static async execute(html, variables){
+        let tokens = new ib_token_list(this.parse(html));
+
+        html = [];
+
+        for(let i = 0; i < tokens.size; i++){
+            let new_line;
+            let token = tokens.tokens[i];
+            switch(token.type){
+                case ib_token_types.COMMAND:
+                    new_line = await this.command(token.info, variables);
+                    break;
+                case ib_token_types.VARIABLE:
+                    new_line = await this.variable(token.info, variables);
+                    break;
+                case ib_token_types.HTML:
+                    new_line = token.info;
+                    break;
+            }
+            html.push(new_line);
+        };
+
+        return html.join("");
+    }
+
+    static async command(tokens, variables){
+        return tokens.join(" ");
+    }
+
+    static async variable(tokens, variables){
+        return tokens.join(" ");
     }
 
     //#endregion
