@@ -228,12 +228,50 @@ class ib{
         return html.join("");
     }
 
+    //#region command
+
     static async command(tokens, variables){
-        return tokens.join(" ");
+        if(tokens.length == 0){
+            console.error("Empty command found.");
+            return "null";
+        }
+
+        return tokens.join("");
+
+        // switch(tokens[0]){
+        //     case "for":
+        //         return command_for(tokens, variables);
+        //     case "foreach":
+        //         return command_foreach(tokens, variables);
+        //     case "load":
+        //         return command_load(tokens, variables);
+        //     case "define":
+        //         await command_define(tokens, variables);
+        //         break;
+        //     case "var":
+        //         return command_var(tokens, variables);
+        //     case "md":
+        //         return command_md(tokesn, variables);
+        //     default:
+        //         console.error("Unknown command found.");
+        //         return "null";
+        // }
     }
 
     static async variable(tokens, variables){
-        return tokens.join(" ");
+        if(tokens.length == 0){
+            console.error("Empty variable found.");
+        }
+
+        let value = variables[tokens[0]];
+
+        if(value == undefined){
+            console.error("Variable " + tokens[0] + " undefined.");
+        }
+
+        if(tokens.length == 1){
+            return value;
+        }
     }
 
     //#endregion
