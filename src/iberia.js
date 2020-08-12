@@ -111,16 +111,21 @@ class ib{
     }
 
     static is_block(token){
-        if(token.info.size == 0){
-            return false;
-        }
-        let name = token.info[0];
-        switch(name){
+        switch(token.info[0]){
             case "for":
             case "foreach":
-            case "define":
-            case "md":
                 return true;
+            default:
+                return false;
+        }
+    }
+
+    static is_textual(token){
+        switch(token.info[0]){
+            case "define":
+                return 2;
+            case "md":
+                return 1;
             default:
                 return false;
         }
@@ -175,23 +180,34 @@ class ib{
             }
         }
 
-        let tokens = cl.join("").trim().split(" ");
+        let text = cl.join("");
+
+        let tokens = text.trim().split(/(\s+)/);
         tokens = this.remove_whitespace_items(tokens);
 
         let token = new ib_token(ib_token_types.COMMAND, tokens);
 
+        let textual = this.is_textual(token);
         if(this.is_block(token)){
             let block = [];
             for(let next_token = this.parse_token(parser); !parser.is_at_end() && !this.is_end_token(next_token); next_token = this.parse_token(parser)){
                 block.push(next_token);
             }
             token.block = block;
-        }else if(token.info[0] == "define"){
-            html = [];
-            while(!parser.is_at_end()){
-                let char = parser.advance();
-                
+        }
+        else if(textual){
+            if(token.info.length < textual + 1){
+                console.error("Not enought parameters passed to " + token[0] + " command.");
             }
+            token.info = token.info.slice(0, textual);
+            let char = text[0];
+            while(text.length > 0 && char != "\n"){
+                text = text.substr(1);
+                char = text[0];
+            }
+            if(text.length <= 0) console.error("Expected new line in " + token[0] + " command.");
+                       
+            token.text = text.substr(1);
         }
 
         return token;
@@ -211,7 +227,7 @@ class ib{
             }
         }
 
-        let tokens = vl.join("").trim().split(" ");
+        let tokens = vl.join("").trim().split(/(\s+)/);
         tokens = this.remove_whitespace_items(tokens);
 
         let token = new ib_token(ib_token_types.VARIABLE, tokens);
@@ -287,11 +303,11 @@ class ib{
                 return this.command_for(token, variables);
             case "foreach":
                 return this.command_foreach(token, variables);
-        //     case "load":
-        //         return this.command_load(token, variables);
-        //     case "define":
-        //         await this.command_define(token, variables);
-        //         break;
+            case "load":
+                return this.command_load(token, variables);
+            case "define":
+                this.command_define(token, variables);
+                break;
         //     case "md":
         //         return this.command_md(token, variables);
         //     default:
@@ -407,6 +423,27 @@ class ib{
         }
 
         return html.join("");
+    }
+
+    static async command_load(token, variables){
+        if(tokens.length < 2) return "null";
+
+        let loadPath = ib_string(variables, token.info[1]);
+        let loadType = token.info[2];
+
+        switch (loadType) {
+            case "ib_html":
+                return this.get_ib_html(loadPath, variables)
+            case "md":
+                return marked(await this.get_file(loadPath));
+            default:
+                return this.get_file(loadPath);
+    }
+    }
+
+    static command_define(token, variables){
+        variables[token.info[1]] = token.text;
+        return "";
     }
 
     //#endregion
