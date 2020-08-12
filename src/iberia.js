@@ -311,11 +311,11 @@ class ib{
             case "define":
                 this.command_define(token, variables);
                 break;
-        //     case "md":
-        //         return this.command_md(token, variables);
-        //     default:
-        //         console.error("Unknown command found.");
-        //         return "null";
+            case "md":
+                return this.command_md(token, variables);
+            default:
+                console.error("Unknown command found.");
+                return "null";
         }
     }
 
@@ -454,6 +454,10 @@ class ib{
     static command_define(token, variables){
         variables[token.info[1]] = token.text;
         return "";
+    }
+
+    static command_md(token, variables){
+        return marked(token.text);
     }
 
     //#endregion
