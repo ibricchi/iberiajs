@@ -1,4 +1,4 @@
-import("./marked.min.js")
+import("./marked.min.js");
 
 //#region ib_classes
 
@@ -228,6 +228,9 @@ class ib{
         }
 
         let tokens = vl.join("").trim().split(/(\s+)/);
+        if(tokens.length > 1){
+            console.error("Variable expects only one argument")
+        }
         tokens = this.remove_whitespace_items(tokens);
 
         let token = new ib_token(ib_token_types.VARIABLE, tokens);
@@ -432,13 +435,14 @@ class ib{
         let loadType = token.info[2];
 
         switch (loadType) {
-            case "ib_html":
+            case "ib":
                 return this.get_ib_html(loadPath, variables)
-            case "md":
+            case "md":{
                 return marked(await this.get_file(loadPath));
+            }
             default:
                 return this.get_file(loadPath);
-    }
+        }
     }
 
     static command_define(token, variables){
@@ -466,10 +470,22 @@ class ib{
             console.error("Empty variable found.");
         }
 
-        let value = this.direct_var(token.info[0], variables);
+        let var_info = token.info[0].split("->");
+        let name = var_info[0];
+        let modifier = var_info[1];
 
-        if(token.info.length == 1){
-            return value;
+        let value = this.direct_var(name, variables);
+
+        switch(modifier){
+            case "ib":
+                return this.execute(await value, this.scope_map(variables));
+            case "ib_unscoped":
+                return this.execute(await value, variables);
+            case "md":{
+                return marked(await value);
+            }
+            default:
+                return value;
         }
     }
 
