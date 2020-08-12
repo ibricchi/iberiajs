@@ -36,11 +36,17 @@ class ib_parser{
         if(this.is_at_end()) return null;
         return this.file[this.current];
     }
+
+    retreat(){
+        this.current--;
+    }
+
+    goto(loc){
+        this.current = loc;
+    }
 }
 
 //#endregion
-
-//#region ib
 
 class ib{
 
@@ -120,6 +126,14 @@ class ib{
         }
     }
 
+    static is_end_token(token){
+        if(token == undefined){
+            return false;
+        }else{
+            return token.info[0] == "end";
+        }
+    }
+
     //#endregion
 
     //#region parse
@@ -128,51 +142,32 @@ class ib{
         let tokens = [];
         let parser = new ib_parser(file);
 
-        let html = [];
-
         while(!parser.is_at_end()){
-            let char = parser.advance();
-            switch(char){
-                case "$":
-                    if(html.length != 0){
-                        tokens.push(new ib_token(ib_token_types.HTML, html.join("")));
-                        html = [];
-                    }
-                    tokens.push(new ib_token(ib_token_types.COMMAND, this.parse_command(parser)));
-                    break;
-                case "#":
-                    if(html.length != 0){
-                        tokens.push(new ib_token(ib_token_types.HTML, html.join("")));
-                        html = [];
-                    }
-                    tokens.push(new ib_token(ib_token_types.VARIABLE, this.parse_variable(parser)));
-                    break;
-                case "\\":
-                    if(parser.peek() == "$" || parser.peek() == "#"){
-                        html.push(parser.advance());
-                    }
-                    else{
-                        html.push(char);
-                    }
-                    break;
-                default:
-                    html.push(char);
-                    break;
-            }
-        }
-
-        if(html.length != 0){
-            tokens.push(new ib_token(ib_token_types.HTML, html.join("")));
+            tokens.push(this.parse_token(parser));
         }
 
         return tokens;
     }
 
+    static parse_token(parser){
+        let char = parser.peek();
+        switch(char){
+            case "$":
+                return this.parse_command(parser);
+            case "#":
+                return this.parse_variable(parser);
+            default:
+                return this.parse_html(parser);
+        }
+    }
+
     static parse_command(parser){
         let cl = [];
 
+        parser.advance();
+
         for(let char = parser.advance(); char != null && !parser.is_at_end() && char != "$"; char = parser.advance()){
-            if(char == "\\" && char.peek() == "$" && char.peek() == "#"){
+            if(char == "\\" && char.peek() == "$"){
                 cl.push(parser.advance());
             }
             else{
@@ -183,11 +178,29 @@ class ib{
         let tokens = cl.join("").trim().split(" ");
         tokens = this.remove_whitespace_items(tokens);
 
-        return tokens;
+        let token = new ib_token(ib_token_types.COMMAND, tokens);
+
+        if(this.is_block(token)){
+            let block = [];
+            for(let next_token = this.parse_token(parser); !parser.is_at_end() && !this.is_end_token(next_token); next_token = this.parse_token(parser)){
+                block.push(next_token);
+            }
+            token.block = block;
+        }else if(token.info[0] == "define"){
+            html = [];
+            while(!parser.is_at_end()){
+                let char = parser.advance();
+                
+            }
+        }
+
+        return token;
     }
 
     static parse_variable(parser){
         let vl = [];
+
+        parser.advance();
 
         for(let char = parser.advance(); char != null && !parser.is_at_end() && char != "#"; char = parser.advance()){
             if(char == "\\" && char.peek() == "#"){
@@ -199,41 +212,31 @@ class ib{
         }
 
         let tokens = vl.join("").trim().split(" ");
-
         tokens = this.remove_whitespace_items(tokens);
 
-        return tokens;
+        let token = new ib_token(ib_token_types.VARIABLE, tokens);
+
+        return token;
     }
 
-    //#endregion
+    static parse_html(parser){
+        let html = [];
 
-    //#region subset
-
-    static subset(tokens){
-        let new_tokens = [];
-
-        while(tokens.length != 0){
-            if(tokens[0].type == ib_token_types.COMMAND){
-                if(tokens[0].info.size < 1){
-                    console.log("Empty command found");
-                }
-                else if(this.is_block(tokens[0])){
-                    new_tokens.push(tokens[0]);
-                    tokens.shift();
-                    new_tokens[new_tokens.length - 1].block = this.subset(tokens);
-                }
-                else if(tokens[0].info[0] == "end"){
-                    tokens.shift();
-                    return new_tokens;
-                }
+        let char = parser.advance();
+        while(char != null && char != "#" && char != "$"){
+            if(char == "\\" && (char.peek() == "$" || char.peek() == "#" || char.peek("\\"))){
+                html.push(parser.advance());
             }
-            if(tokens.length != 0){
-                new_tokens.push(tokens[0]);
-                tokens.shift();
-            }
+            html.push(char);
+
+            char = parser.advance();
         }
+        if(char == "#" || char == "$") parser.retreat();
 
-        return new_tokens;
+        html = html.join("");
+        
+        let token = new ib_token(ib_token_types.HTML, html);
+        return token;
     }
 
     //#endregion
@@ -242,8 +245,7 @@ class ib{
 
     static async execute(html, variables){
         let tokens = this.parse(html);
-        tokens = this.subset(tokens);
-
+        // let a = 1;
         html = this.execute_tokens(tokens, variables);
 
         return html;
@@ -439,5 +441,3 @@ class ib{
     //#endregion
 
 }
-
-//#endregion
