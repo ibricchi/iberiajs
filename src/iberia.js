@@ -139,6 +139,14 @@ class ib{
         }
     }
 
+    static is_digit(c){
+        return c >= '0' && c <= '9';
+    }
+
+    static promise_array(a, i){
+        return a[i];
+    }
+
     //#endregion
 
     //#region parse
@@ -491,9 +499,21 @@ class ib{
                 return this.execute(await value, this.scope_map(variables));
             case "ib_unscoped":
                 return this.execute(await value, variables);
-            case "md":{
+            case "md":
                 return marked(await value);
+            case "get":
+            case "at":
+            case "array":{
+                let index = var_info[2];
+                if(this.is_digit(index[0])){
+                    index = parseInt(index);
+                }
+                else{
+                    index = this.direct_var(index, variables);
+                }
+                return this.promise_array(await value, index);
             }
+
             default:
                 return value;
         }
