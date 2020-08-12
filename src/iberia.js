@@ -147,6 +147,37 @@ class ib{
         return a[i];
     }
 
+    static var_string(str, variables){
+        let newString = [];
+        for(let i = 0; i < str.length; i++){
+            if(i + 1 < str.length && str[i] == "\\" && str[i+1] == "#"){
+                newString.push("#");
+                i++;
+            }
+            else if(str[i] == "#"){
+                let start = i;
+                let end = i+1;
+                while(end < str.length && str[end] != "#"){
+                    if(end + 1 < str.length && str[end]=="\\" && str[end + 1] == "#"){
+                        str = str.slice(0, end) + str.slice(end + 1);
+                        end++;
+                    }
+                    end++;
+                }
+    
+                i = end;
+    
+                let name = str.slice(start + 1, end);
+                let value = this.direct_var(name, variables);
+                newString.push(variables[name]);
+            }
+            else{
+                newString.push(str[i]);
+            }
+        }
+        return newString.join("");
+    }
+
     //#endregion
 
     //#region parse
@@ -443,9 +474,9 @@ class ib{
     }
 
     static async command_load(token, variables){
-        if(tokens.length < 2) return "null";
+        if(token.info.length < 2) return "null";
 
-        let loadPath = ib_string(variables, token.info[1]);
+        let loadPath = this.var_string(token.info[1], variables);
         let loadType = token.info[2];
 
         switch (loadType) {
