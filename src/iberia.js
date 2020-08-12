@@ -335,7 +335,7 @@ class ib{
         
         let loopCompConst = token.info[4];
         if(loopCompConst[0] == "#"){
-            loopCompConst = ib_inline_var(variables, loopCompConst.slice(1));
+            loopCompConst = await this.direct_var(loopCompConst.substr(1, loopCompConst.length-2), variables);
         }else{
             loopCompConst = parseFloat(loopCompConst);
         }
@@ -366,20 +366,26 @@ class ib{
             }
         }
 
-        function doEnd(){
-            loopEnd.forEach((command) => {
-                let commandtokens = command.split("+=");
+        async function doEnd(body){
+            for(let i = 0; i < loopEnd.length; i++){
+                let commandtokens = loopEnd[i].split("+=");
                 let commandVar = commandtokens[0];
-                let commandDelta = parseFloat(commandtokens[1]);
+                let commandDelta = commandtokens[1];
+                if(commandDelta[0] == "#"){
+                    commandDelta = await body.direct_var(commandDelta.substr(1, commandDelta.length-2), variables);
+                }
+                else{
+                    commandDelta = parseFloat(commandDelta);
+                }
                 variables[commandVar] += commandDelta;
-            });
+            };
         }
 
         let html = [];
 
         while(checkCondition()){
             html.push(await this.execute_tokens(token.block, variables));
-            doEnd();
+            await doEnd(this);
         }
 
         return html.join("");
