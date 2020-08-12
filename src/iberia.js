@@ -211,7 +211,7 @@ class ib{
         parser.advance();
 
         for(let char = parser.advance(); char != null && !parser.is_at_end() && char != "$"; char = parser.advance()){
-            if(char == "\\" && char.peek() == "$"){
+            if(char == "\\" && parser.peek() == "$"){
                 cl.push(parser.advance());
             }
             else{
@@ -258,7 +258,7 @@ class ib{
         parser.advance();
 
         for(let char = parser.advance(); char != null && !parser.is_at_end() && char != "#"; char = parser.advance()){
-            if(char == "\\" && char.peek() == "#"){
+            if(char == "\\" && parser.peek() == "#"){
                 vl.push(parser.advance());
             }
             else{
