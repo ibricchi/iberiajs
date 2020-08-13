@@ -1,5 +1,7 @@
 # iberiaJS
 
+![iberiaJS logo](./logo/logo.png)
+
 This is a simple HTML pre-processor written from scratch in JS. The project started off as a helper tool for building my personal website ibricchi.com, however as it expanded I thought I would take it up as a full project and build it out properly.
 
 ## JS
