@@ -285,7 +285,9 @@ class ib{
             if(char == "\\" && (parser.peek() == "$" || parser.peek() == "#" || parser.peek("\\"))){
                 html.push(parser.advance());
             }
-            html.push(char);
+            else{
+                html.push(char);
+            }
 
             char = parser.advance();
         }
