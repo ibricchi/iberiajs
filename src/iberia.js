@@ -282,7 +282,7 @@ class ib{
 
         let char = parser.advance();
         while(char != null && char != "#" && char != "$"){
-            if(char == "\\" && (char.peek() == "$" || char.peek() == "#" || char.peek("\\"))){
+            if(char == "\\" && (parser.peek() == "$" || parser.peek() == "#" || parser.peek("\\"))){
                 html.push(parser.advance());
             }
             html.push(char);
@@ -540,7 +540,7 @@ class ib{
                     index = parseInt(index);
                 }
                 else{
-                    index = this.direct_var(index, variables);
+                    index = await this.direct_var(index, variables);
                 }
                 return this.promise_array(await value, index);
             }
