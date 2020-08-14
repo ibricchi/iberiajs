@@ -2,5 +2,8 @@ component_depth: 1
 languages:
 - name: javascript
   production:
-      include:
-        - /src/iberia.js
+    include:
+      - /src/iberia.js
+  test:
+    include:
+      - /unit-tests/*
