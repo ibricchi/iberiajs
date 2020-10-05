@@ -376,7 +376,10 @@ class ib{
         
         let loopCompConst = token.info[4];
         if(loopCompConst[0] == "#"){
-            loopCompConst = await this.direct_var(loopCompConst.substr(1, loopCompConst.length-2), variables);
+            loopCompConst = await this.variable(
+                new ib_token(ib_token_types.VARIABLE, [loopCompConst.substr(1, loopCompConst.length-2)]),
+                variables
+            );
         }else{
             loopCompConst = parseFloat(loopCompConst);
         }
