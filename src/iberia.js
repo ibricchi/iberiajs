@@ -447,7 +447,10 @@ class ib{
         }
 
         let loopVar = token.info[1];
-        let loopArray = await this.direct_var(token.info[2], variables);
+        let loopArray = await this.variable(
+            new ib_token(ib_token_types.VARIABLE, [token.info[2]]),
+            variables
+        );w
         let loopModifier = token.info[3];
 
         switch(loopModifier){
