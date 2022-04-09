@@ -450,7 +450,7 @@ class ib{
         let loopArray = await this.variable(
             new ib_token(ib_token_types.VARIABLE, [token.info[2]]),
             variables
-        );w
+        );
         let loopModifier = token.info[3];
 
         switch(loopModifier){
@@ -466,7 +466,10 @@ class ib{
             case "decreasing":
                 loopArray = loopArray.sort(function(a, b){return b - a});
             case "random":
-                loopArrau = loopArray.sort(function(a, b){return a - Math.random()});
+                loopArray = loopArray
+                            .map(v => ({v, i: Math.random()}))
+                            .sort((a, b) => a.i - b.i)
+                            .map(v => v.v);
             default:
                 break;
         }
