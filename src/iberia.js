@@ -118,7 +118,23 @@ class ib {
     }
 
     static contains(arr, obj) {
-        return arr.indexOf(obj) != -1;
+        if (arr instanceof Array) {
+            return arr.indexOf(obj) > -1;
+        }
+        if (arr instanceof Object) {
+            return Object.keys(arr).indexOf(obj) > -1;
+        }
+        return false;
+    }
+
+    static contains_or_warn(arr, obj, msg, def=null){
+        if(this.contains(arr, obj)){
+            return arr[obj];
+        }
+        else{
+            console.warn(msg);
+            return def;
+        }
     }
 
     static validate_params(command, parameters, min, max, allowed_modifiers = []) {
@@ -303,7 +319,7 @@ class ib {
                         html.push(await this.execute_for(params, body, ctx));
                         break;
                     case "foreach":
-                        // html.push(await execute_foreach(params, body, variables));
+                        html.push(await this.execute_foreach(params, body, ctx));
                         break;
                     case "define":
                         // html.push(await execute_define(params, body, variables));
@@ -354,8 +370,8 @@ class ib {
                 return parseFloat(text);
             }
             catch(e){
-                console.warn(`Expected a float or a variable, but found ${text}. Will return 0.`);
-                return 0;
+                console.warn(`Expected a float or a variable, but found ${text}. Will return null.`);
+                return null;
             }
         }
     }
@@ -394,8 +410,9 @@ class ib {
         let loopCompComp = params[2];
         let loopCompConst = params[3];
         async function checkCondition() {
-            let left = ctx[loopCompVar];
-            let right = await ib.float_or_signal_var(loopCompConst, ctx);
+            let left = ib.contains_or_warn(ctx, loopCompVar, `Loop left comparison variable ${loopCompVar} does not exist in context. Will always assume false.`);
+            let right = await ib.float_or_signal_var(loopCompConst, ctx)
+            if (left == null | right == null) return false;
             switch (loopCompComp) {
                 case "==":
                     return left == right;
@@ -441,53 +458,56 @@ class ib {
         return html.join("\n");
     }
 
-    static async command_foreach(token, ctx) {
-        ctx = this.scope_map(ctx);
+    static async execute_foreach(parameters, body, ctx) {
+        const allowed_modifiers = ["unscoped", "reversed", "alphabetical", "alphareversed", "increasing", "decreasing", "randomized"];
+        let [valid, params, modifiers] = this.validate_params("for", parameters, 2, 2, allowed_modifiers);
+        if (!valid) return "";
 
-        if (token.info.length < 3) {
-            console.error("Not enough parameters passed to for loop.");
-            return "null";
-        }
-        else if (token.info.length > 4) {
-            console.warn("Too many parameters passed to for loop");
-        }
-
-        let loopVar = token.info[1];
-        let loopArray = await this.variable(
-            new ib_token(ib_token_types.VARIABLE, [token.info[2]]),
-            ctx
-        );
-        let loopModifier = token.info[3];
-
-        switch (loopModifier) {
-            case "reversed":
-                loopArray = loopArray.reverse();
-                break;
-            case "alphabetical":
-                loopArray = loopArray.sort();
-            case "alphareverse":
-                loopArray = loopArray.sort().reverse();
-            case "increasing":
-                loopArray = loopArray.sort(function (a, b) { return a - b });
-            case "decreasing":
-                loopArray = loopArray.sort(function (a, b) { return b - a });
-            case "random":
-                loopArray = loopArray
-                    .map(v => ({ v, i: Math.random() }))
-                    .sort((a, b) => a.i - b.i)
-                    .map(v => v.v);
-            default:
-                break;
+        // by default we add a scope to variables
+        if (!this.contains(modifiers, "unscoped")) {
+            ctx = this.scope_map(ctx);
         }
 
+        // initialize variable
+        let loopVariable = params[0];
+        let loopArray = ib.contains_or_warn(ctx, params[1], `Foreach array ${params[1]} does not exist in context. Will assume empty array.`, []);
+        if (loopArray == null || typeof loopArray[Symbol.iterator] !== 'function'){
+            console.warn(`Foreach array ${params[1]} is not iterable. Will assume empty array.`);
+            loopArray = [];
+        }
+
+        // apply order modifiers
+        modifiers.forEach(modifier => {
+            switch (modifier) {
+                case "reversed":
+                    loopArray = loopArray.reverse();
+                    break;
+                case "alphabetical":
+                    loopArray = loopArray.sort();
+                case "alphareversed":
+                    loopArray = loopArray.sort().reverse();
+                case "increasing":
+                    loopArray = loopArray.sort(function (a, b) { return a - b });
+                case "decreasing":
+                    loopArray = loopArray.sort(function (a, b) { return b - a });
+                case "randomized":
+                    loopArray = loopArray
+                        .map(v => ({ v, i: Math.random() }))
+                        .sort((a, b) => a.i - b.i)
+                        .map(v => v.v);
+                default:
+                    break;
+            }       
+        });
+
+        // loop body
         let html = [];
+        for (let v of loopArray) {
+            ctx[loopVariable] = v;
+            html.push(await ib.execute_tokens(body, ctx));
+        };
 
-        for (let i = 0; i < loopArray.length; i++) {
-            ctx[loopVar] = loopArray[i];
-            html.push(await this.execute_tokens(token.block, ctx));
-        }
-
-        return html.join("");
+        return html.join("\n");
     }
 
     static async command_load(token, ctx) {
