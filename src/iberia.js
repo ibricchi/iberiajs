@@ -33,9 +33,9 @@ class ib {
         })
     }
 
-    static async get_ib_file(path, variables) {
+    static async get_ib_file(path, ctx) {
         let html = await this.get_file(path)
-        html = await this.execute(html, variables);
+        html = await this.execute(html, ctx);
         return html;
     }
 
@@ -48,8 +48,8 @@ class ib {
         this.insert_text(destination, html);
     }
 
-    static async insert_ib_file(path, destination, variables) {
-        let html = await this.get_ib_html(path, variables);
+    static async insert_ib_file(path, destination, ctx) {
+        let html = await this.get_ib_file(path, ctx);
         this.insert_text(destination, html);
     }
 
@@ -57,10 +57,10 @@ class ib {
 
     //#region helpers
 
-    static scope_map(variables) {
+    static scope_map(ctx) {
         var newMap = new Map();
-        Object.keys(variables).forEach(key => {
-            newMap[key] = variables[key];
+        Object.keys(ctx).forEach(key => {
+            newMap[key] = ctx[key];
         })
         return newMap;
     }
@@ -77,7 +77,7 @@ class ib {
         return a[i];
     }
 
-    static var_string(str, variables) {
+    static var_string(str, ctx) {
         let newString = [];
         for (let i = 0; i < str.length; i++) {
             if (i + 1 < str.length && str[i] == "\\" && str[i + 1] == "#") {
@@ -98,8 +98,8 @@ class ib {
                 i = end;
 
                 let name = str.slice(start + 1, end);
-                let value = this.direct_var(name, variables);
-                newString.push(variables[name]);
+                let value = this.direct_var(name, ctx);
+                newString.push(ctx[name]);
             }
             else {
                 newString.push(str[i]);
@@ -109,13 +109,72 @@ class ib {
     }
 
     static is_self_terminating_command(command) {
-        switch(command) {
+        switch (command) {
             case "load":
                 return true;
             default:
                 return false;
         }
     }
+
+    static contains(arr, obj) {
+        return arr.indexOf(obj) != -1;
+    }
+
+    static check_parameters(parameters, command, min, max, allowed_modifiers = []) {
+        let length = parameters.length;
+        if (min == max && length != min) {
+            if (length < min) {
+                console.warn(`Command ${command} requires exactly ${min} parameters. Command block will be ignored.`);
+                return [false, [], []];
+            }
+            else {
+                console.warn(`Command ${command} requires exactly ${min} parameters. Extra parameters will be ignored.`);
+                return [true, [parameters.slice(0,max)], []];
+            }
+        }
+        if (length < min) {
+            console.warn(`Command ${command} requires at least ${min} parameters. Command block will be ignored.`);
+            return [false, [], []];
+        }
+        if (allowed_modifiers != [] && length > max) {
+            console.warn(`Command ${command} allows at most ${max} parameters. Extra parameters will be ignored.`);
+            return [true, [parameters.slice(0,max)], parameters];
+        }
+        if (allowed_modifiers != [] && length > max) {
+            let params = parameters.slice(0, max);
+            let modifiers = [];
+            let modifier_count = length - max;
+            for (let i = modifier_count; i < length; i++) {
+                let param = parameters[i];
+                if (!this.contains(allowed_modifiers, param.modifier)) {
+                    console.warn(`Command ${command} does not allow modifier ${param}. Modifier will be ignored.`);
+                }
+                else{
+                    modifiers.push(param);
+                }
+            }
+            return [true, params, modifiers];
+        }
+    }
+
+    static async asyncStringReplace (str, regex, aReplacer) {
+        const substrs = [];
+        let match;
+        let i = 0;
+        while ((match = regex.exec(str)) !== null) {
+            // put non matching string
+            substrs.push(str.slice(i, match.index));
+            // call the async replacer function with the matched array spreaded
+            substrs.push(aReplacer(...match));
+            i = regex.lastIndex;
+        }
+        // put the rest of str
+        substrs.push(str.slice(i));
+        // wait for aReplacer calls to finish and join them back into string
+        return (await Promise.all(substrs)).join('');
+    };
+    
 
     //#endregion
 
@@ -156,7 +215,7 @@ class ib {
             console.warn("Found an unclosed command. Will automatically add close at end of file.");
         }
 
-        return [nested_tokens, tokens.splice(i + (till_end ? 1 : 0))];
+        return [nested_tokens, tokens.slice(i + (till_end ? 1 : 0))];
 
     }
 
@@ -200,7 +259,7 @@ class ib {
         if (command_match) {
             let command = command_match[1];
             let info = command.split(" ");
-            return [{type: ib_token_types.COMMAND, command: info[0], params: info.slice(1) }];
+            return [{ type: ib_token_types.COMMAND, command: info[0], params: info.slice(1) }];
         }
 
         // if neither matched warn and return text
@@ -213,20 +272,21 @@ class ib {
 
     //#region execute
 
-    static async execute(html, variables) {
+    static async execute(html, ctx) {
         let tokens = this.parse(html);
         // let a = 1;
-        html = this.execute_tokens(tokens, variables);
+        html = this.execute_tokens(tokens, ctx);
 
         return html;
     }
 
-    static async execute_tokens(tokens, variables) {
+    static async execute_tokens(tokens, ctx) {
         let html = [];
 
-        tokens.forEach(token => {
-            if(token.type == ib_token_types.TEXT) {
-                html.push(token.text);
+        for(let i = 0; i < tokens.length; i++) {
+            let token = tokens[i];
+            if (token.type == ib_token_types.TEXT) {
+                html.push(await this.process_variables(token.text, ctx));
             }
             else {
                 let command = token.command;
@@ -235,39 +295,86 @@ class ib {
 
                 switch (command) {
                     case "if":
-                        html.push(await execute_if(params, body, variables));
+                        // html.push(await execute_if(params, body, variables));
                         break;
                     case "for":
-                        html.push(await execute_for(params, body, variables));
+                        // html.push(await execute_for(params, body, variables));
                         break;
                     case "foreach":
-                        html.push(await execute_foreach(params, body, variables));
+                        // html.push(await execute_foreach(params, body, variables));
                         break;
                     case "define":
-                        html.push(await execute_define(params, body, variables));
+                        // html.push(await execute_define(params, body, variables));
                         break;
                     case "load":
-                        html.push(await execute_load(params, variables));
+                        // html.push(await execute_load(params, variables));
                         break;
                     case "md":
-                        html.push(await execute_md(params, variables));
+                        // html.push(await execute_md(params, variables));
                         break;
                     default:
                         console.error("Command " + command + " is not supported. Command block will be ignored");
                 }
             }
-        });
+        };
 
         return html.join("\n");
     }
 
-    //#region command
-
-    static async execute_for(params, body, variables) {
+    static async process_variables(text, ctx) {
+        let variable_regex = /#([^#\\]*(?:\\.[^#\\]*)*)#/g;
+        return await this.asyncStringReplace(text, variable_regex, async (data_str) => {
+            let data = data_str.slice(1,-1).split(" ");
+            let variable = data[0];
+            let modifiers = data.slice(1);
+            return await this.execute_variable(variable, modifiers, ctx);
+        })
     }
 
-    static async command_for(token, variables) {
-        variables = this.scope_map(variables);
+    static async process_single_variable(text, ctx) {
+        let variable_regex = /^#([^#\\]*(?:\\.[^#\\]*)*)#$/g;
+        if(!variable_regex.test(text)) {
+            console.warn(`Expected variable in the form "#[variable name] [List of modifiers]?# but found ${text}. Will return "null".`);
+            return "null";
+        }
+        
+        return await this.asyncStringReplace(text, variable_regex, async (data_str) => {
+            let data = data_str.slice(1,-1).split(" ");
+            let variable = data[0];
+            let modifiers = data.slice(1);
+            return await this.execute_variable(variable, modifiers, ctx);
+        })
+    }
+
+    static async execute_variable(variable, modifiers, ctx) {
+        if(!ctx.hasOwnProperty(variable)) {
+            console.warn(`Variable ${variable} does not exist in context. Returning "null".`);
+            return "null";
+        }
+        return ctx[variable];
+    }
+
+    //#region command
+
+    static async execute_for(parameters, body, ctx) {
+        const allowed_modifiers = ["unscoped"];
+        let [valid, params, modifiers] = this.validate_params("for", parameters, 5, 5, allowed_modifiers);
+        if (!valid) return "";
+        
+        // by default we add a scope to variables
+        if(!this.contains(modifiers, "unscoped")){
+            ctx = this.scope_map(ctx);
+        }
+
+        let loopVariables = params[0].split(",");
+        let loopCompVar = params[1];
+        let loopCompComp = params[2];
+
+        let loopCompConst = params[4];
+    }
+
+    static async command_for(token, ctx) {
+        ctx = this.scope_map(ctx);
         if (token.info.length < 6) {
             console.error("Not enough parameters passed to for loop.");
             return "null";
@@ -284,7 +391,7 @@ class ib {
         if (loopCompConst[0] == "#") {
             loopCompConst = await this.variable(
                 new ib_token(ib_token_types.VARIABLE, [loopCompConst.substr(1, loopCompConst.length - 2)]),
-                variables
+                ctx
             );
         } else {
             loopCompConst = parseFloat(loopCompConst);
@@ -296,21 +403,21 @@ class ib {
             let loopVariable = loopVariables[i].split("=");
             let varName = loopVariable[0];
             let varValue = loopVariable.length == 2 ? parseFloat(loopVariable[1]) : 0
-            variables[varName] = varValue;
+            ctx[varName] = varValue;
         }
 
         function checkCondition() {
             switch (loopCompComp) {
                 case "==":
-                    return variables[loopCompVar] == loopCompConst;
+                    return ctx[loopCompVar] == loopCompConst;
                 case "<":
-                    return variables[loopCompVar] < loopCompConst;
+                    return ctx[loopCompVar] < loopCompConst;
                 case "<=":
-                    return variables[loopCompVar] <= loopCompConst;
+                    return ctx[loopCompVar] <= loopCompConst;
                 case ">":
-                    return variables[loopCompVar] > loopCompConst;
+                    return ctx[loopCompVar] > loopCompConst;
                 case ">=":
-                    return variables[loopCompVar] >= loopCompConst;
+                    return ctx[loopCompVar] >= loopCompConst;
                 default:
                     return false;
             }
@@ -322,27 +429,27 @@ class ib {
                 let commandVar = commandtokens[0];
                 let commandDelta = commandtokens[1];
                 if (commandDelta[0] == "#") {
-                    commandDelta = await body.direct_var(commandDelta.substr(1, commandDelta.length - 2), variables);
+                    commandDelta = await body.direct_var(commandDelta.substr(1, commandDelta.length - 2), ctx);
                 }
                 else {
                     commandDelta = parseFloat(commandDelta);
                 }
-                variables[commandVar] += commandDelta;
+                ctx[commandVar] += commandDelta;
             };
         }
 
         let html = [];
 
         while (checkCondition()) {
-            html.push(await this.execute_tokens(token.block, variables));
+            html.push(await this.execute_tokens(token.block, ctx));
             await doEnd(this);
         }
 
         return html.join("");
     }
 
-    static async command_foreach(token, variables) {
-        variables = this.scope_map(variables);
+    static async command_foreach(token, ctx) {
+        ctx = this.scope_map(ctx);
 
         if (token.info.length < 3) {
             console.error("Not enough parameters passed to for loop.");
@@ -355,7 +462,7 @@ class ib {
         let loopVar = token.info[1];
         let loopArray = await this.variable(
             new ib_token(ib_token_types.VARIABLE, [token.info[2]]),
-            variables
+            ctx
         );
         let loopModifier = token.info[3];
 
@@ -383,22 +490,22 @@ class ib {
         let html = [];
 
         for (let i = 0; i < loopArray.length; i++) {
-            variables[loopVar] = loopArray[i];
-            html.push(await this.execute_tokens(token.block, variables));
+            ctx[loopVar] = loopArray[i];
+            html.push(await this.execute_tokens(token.block, ctx));
         }
 
         return html.join("");
     }
 
-    static async command_load(token, variables) {
+    static async command_load(token, ctx) {
         if (token.info.length < 2) return "null";
 
-        let loadPath = this.var_string(token.info[1], variables);
+        let loadPath = this.var_string(token.info[1], ctx);
         let loadType = token.info[2];
 
         switch (loadType) {
             case "ib":
-                return this.get_ib_html(loadPath, variables)
+                return this.get_ib_html(loadPath, ctx)
             case "md": {
                 return marked(await this.get_file(loadPath));
             }
@@ -407,12 +514,12 @@ class ib {
         }
     }
 
-    static command_define(token, variables) {
-        variables[token.info[1]] = token.text;
+    static command_define(token, ctx) {
+        ctx[token.info[1]] = token.text;
         return "";
     }
 
-    static command_md(token, variables) {
+    static command_md(token, ctx) {
         return marked(token.text);
     }
 
@@ -420,8 +527,8 @@ class ib {
 
     //#region variable
 
-    static async direct_var(name, variables) {
-        let value = variables[name];
+    static async direct_var(name, ctx) {
+        let value = ctx[name];
 
         if (value == undefined) {
             console.error("Variable " + name + " undefined.");
@@ -431,7 +538,7 @@ class ib {
         return value;
     }
 
-    static async variable(token, variables) {
+    static async variable(token, ctx) {
         if (token.info.length == 0) {
             console.error("Empty variable found.");
         }
@@ -440,13 +547,13 @@ class ib {
         let name = var_info[0];
         let modifier = var_info[1];
 
-        let value = this.direct_var(name, variables);
+        let value = this.direct_var(name, ctx);
 
         switch (modifier) {
             case "ib":
-                return this.execute(await value, this.scope_map(variables));
+                return this.execute(await value, this.scope_map(ctx));
             case "ib_unscoped":
-                return this.execute(await value, variables);
+                return this.execute(await value, ctx);
             case "md":
                 return marked(await value);
             case "get":
@@ -457,7 +564,7 @@ class ib {
                     index = parseInt(index);
                 }
                 else {
-                    index = await this.direct_var(index, variables);
+                    index = await this.direct_var(index, ctx);
                 }
                 return this.promise_array(await value, index);
             }
