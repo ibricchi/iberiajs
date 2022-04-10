@@ -110,11 +110,11 @@ class ib {
         return false;
     }
 
-    static contains_or_warn(arr, obj, msg, def=null){
-        if(this.contains(arr, obj)){
+    static contains_or_warn(arr, obj, msg, def = null) {
+        if (this.contains(arr, obj)) {
             return arr[obj];
         }
-        else{
+        else {
             console.warn(msg);
             return def;
         }
@@ -127,7 +127,7 @@ class ib {
                 console.warn(`Command ${command} requires exactly ${min} parameters. Command block will be ignored.`);
                 return [false, [], []];
             }
-            else if(allowed_modifiers == []){
+            else if (allowed_modifiers == []) {
                 console.warn(`Command ${command} requires exactly ${min} parameters. Extra parameters will be ignored.`);
                 return [true, [parameters.slice(0, max)], []];
             }
@@ -184,10 +184,10 @@ class ib {
             if (token.inline) {
                 // read line from first inline token and ignore the rest
                 text.push(token.text);
-                while(token.inline){i++;}
+                while (token.inline) { i++; }
             }
-            else{
-                if(token.type == ib_token_types.TEXT){
+            else {
+                if (token.type == ib_token_types.TEXT) {
                     text.push(token.text);
                 }
                 else {
@@ -274,7 +274,7 @@ class ib {
                 let text = inline_command_match[2];
                 return [
                     { type: ib_token_types.COMMAND, inline: true, text: line, command: info[0], params: info.slice(1) },
-                    { type: ib_token_types.TEXT, inlie: true, text: text},
+                    { type: ib_token_types.TEXT, inlie: true, text: text },
                     { type: ib_token_types.COMMAND, inline: true, text: "", command: "end", params: [] }
                 ];
             }
@@ -348,8 +348,8 @@ class ib {
         return await this.asyncStringReplace(text, variable_regex, async (data_str) => {
             let data = data_str.slice(1, -1).split(" ");
             let variable = data[0];
-            let modifiers = data.slice(1);
-            return await this.execute_variable(variable, modifiers, ctx);
+            let parameters = data.slice(1);
+            return await this.execute_variable(variable, parameters, ctx);
         })
     }
 
@@ -370,22 +370,47 @@ class ib {
             return await this.process_single_variable(text, ctx);
         }
         else {
-            try{
-                return parseFloat(text);
-            }
-            catch(e){
+            let v = parseFloat(text);
+            if (isNaN(v)) {
                 console.warn(`Expected a float or a variable, but found ${text}. Will return null.`);
                 return null;
+            }
+            else {
+                return v;
             }
         }
     }
 
-    static async execute_variable(variable, modifiers, ctx) {
-        if (!ctx.hasOwnProperty(variable)) {
-            console.warn(`Variable ${variable} does not exist in context. Returning null.`);
-            return null;
+    static async execute_variable(variable, parameters, ctx) {
+        let allowed_modifiers = [/^load\([a-zA-z]\)$/g];
+        let [valid, params, modifiers] = this.validate_params("variable", parameters, 0, 1, allowed_modifiers);
+        if (!valid) return "";
+
+        let value;
+        let value_type = params[0];
+        switch (value_type) {
+            case "number":
+                let v = parseFloat(variable);
+                if (isNaN(v)) {
+                    console.warn(`Expected a number, but found ${variable}. Will assume 0.`);
+                    value = 0;
+                }
+                else {
+                    value = v;
+                }
+                break;
+            case "string":
+                value = variable;
+                break;
+            default:
+                if (params.length == 1 && value_type != "var") {
+                    console.warn(`Unkown value type ${value_type}. Will assume variable.`);
+                }
+                value = ib.contains_or_warn(ctx, variable, `Variable ${variable} is not defined. Returning null.`);
+
         }
-        return ctx[variable];
+
+        return value;
     }
 
     //#region command
@@ -393,15 +418,15 @@ class ib {
     static async execute_if(parameters, body, ctx) {
         const allowed_modifiers = ["unscoped"];
         let [valid, params, modifiers] = this.validate_params("if", parameters, 1, 1, allowed_modifiers);
-        if(!valid) return "";
+        if (!valid) return "";
 
         // by default we add a scope to variables
-        if(!this.contains(modifiers, "unscoped")){
+        if (!this.contains(modifiers, "unscoped")) {
             ctx = this.scope_map(ctx);
         }
 
         let condition = await ib.process_single_variable(params[0], ctx);
-        if(condition) {
+        if (condition) {
             return await this.execute_tokens(body, ctx);
         }
 
@@ -492,7 +517,7 @@ class ib {
         // initialize variable
         let loopVariable = params[0];
         let loopArray = ib.contains_or_warn(ctx, params[1], `Foreach array ${params[1]} does not exist in context. Will assume empty array.`, []);
-        if (loopArray == null || typeof loopArray[Symbol.iterator] !== 'function'){
+        if (loopArray == null || typeof loopArray[Symbol.iterator] !== 'function') {
             console.warn(`Foreach array ${params[1]} is not iterable. Will assume empty array.`);
             loopArray = [];
         }
@@ -518,7 +543,7 @@ class ib {
                         .map(v => v.v);
                 default:
                     break;
-            }       
+            }
         });
 
         // loop body
@@ -563,23 +588,24 @@ class ib {
         var varType = params[1];
         let value = await ib.execute_tokens(body, ctx);
 
-        switch(varType) {
+        switch (varType) {
             case "number":
-                try{
-                    value = parseFloat(value);
-                }
-                catch(e) {
-                    console.warn(`Could not parse ${value} as a number. Will assume 0.`);
+                let v = parseFloat(value);
+                if (isNaN(v)) {
+                    console.warn(`Expected a number, but found ${variable}. Will assume 0.`);
                     value = 0;
+                }
+                else {
+                    value = v;
                 }
                 break;
             default:
-                if(params.length != 1 && varType != "string") {
+                if (params.length != 1 && varType != "string") {
                     console.warn(`Unkown variable type ${varType}. Will assume string.`);
                 }
                 // execute string related modifiers
-                for(let modifier of modifiers) {
-                    switch(modifier) {
+                for (let modifier of modifiers) {
+                    switch (modifier) {
                         case "trim":
                             value = value.trim();
                             break;
