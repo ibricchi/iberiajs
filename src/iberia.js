@@ -320,7 +320,7 @@ class ib {
 
                 switch (command) {
                     case "if":
-                        // html.push(await execute_if(params, body, variables));
+                        html.push(await ib.execute_if(params, body, ctx));
                         break;
                     case "for":
                         html.push(await ib.execute_for(params, body, ctx));
@@ -389,6 +389,23 @@ class ib {
     }
 
     //#region command
+
+    static async execute_if(parameters, body, ctx) {
+        const allowed_modifiers = ["unscoped"];
+        let [valid, params, modifiers] = this.validate_params("if", parameters, 1, 1, allowed_modifiers);
+        if(!valid) return "";
+
+        // by default we add a scope to variables
+        if(!this.contains(modifiers, "unscoped")){
+            ctx = this.scope_map(ctx);
+        }
+
+        let condition = await ib.process_single_variable(params[0], ctx);
+        if(condition) {
+            return await this.execute_tokens(body, ctx);
+        }
+
+    }
 
     static async execute_for(parameters, body, ctx) {
         const allowed_modifiers = ["unscoped"];
