@@ -69,14 +69,6 @@ class ib {
         return token && token.type == ib_token_types.COMMAND && token.command == "end";
     }
 
-    static is_digit(c) {
-        return c >= '0' && c <= '9';
-    }
-
-    static promise_array(a, i) {
-        return a[i];
-    }
-
     static var_string(str, ctx) {
         let newString = [];
         for (let i = 0; i < str.length; i++) {
@@ -106,15 +98,6 @@ class ib {
             }
         }
         return newString.join("");
-    }
-
-    static is_self_terminating_command(command) {
-        switch (command) {
-            case "load":
-                return true;
-            default:
-                return false;
-        }
     }
 
     static contains(arr, obj) {
@@ -194,6 +177,29 @@ class ib {
     };
 
 
+    static get_original_text_from_tokens(tokens) {
+        let text = [];
+        for (let i = 0; i < tokens.length; i++) {
+            let token = tokens[i];
+            if (token.inline) {
+                // read line from first inline token and ignore the rest
+                text.push(token.text);
+                while(token.inline){i++;}
+            }
+            else{
+                if(token.type == ib_token_types.TEXT){
+                    text.push(token.text);
+                }
+                else {
+                    text.push(token.text);
+                    text.push(ib.get_original_text_from_tokens(token.body));
+                    text.push(token.end_text);
+                }
+            }
+        }
+        return text.join("\n");
+    }
+
     //#endregion
 
     //#region parse
@@ -215,12 +221,14 @@ class ib {
     static nest_commands(tokens, till_end = false) {
         let nested_tokens = [];
         let i = 0;
+        // loop while there are tokens and in "till_end" flga is enabled untill and end token is found
         while (i < tokens.length && !(till_end && this.is_end_token(tokens[i]))) {
             let token = tokens[i];
-            if (token.type == ib_token_types.COMMAND && !this.is_self_terminating_command(token.command)) {
-                let body;
-                [body, tokens] = this.nest_commands(tokens.slice(i + 1), true)
+            if (token.type == ib_token_types.COMMAND) {
+                let body, end_text;
+                [body, tokens, end_text] = this.nest_commands(tokens.slice(i + 1), true)
                 token.body = body;
+                token.end_text = end_text;
                 nested_tokens.push(token);
                 i = 0;
             }
@@ -233,7 +241,7 @@ class ib {
             console.warn("Found an unclosed command. Will automatically add close at end of file.");
         }
 
-        return [nested_tokens, tokens.slice(i + (till_end ? 1 : 0))];
+        return [nested_tokens, tokens.slice(i + (till_end ? 1 : 0)), till_end ? tokens[i].text : ""];
 
     }
 
@@ -265,9 +273,9 @@ class ib {
                 let info = command.split(" ");
                 let text = inline_command_match[2];
                 return [
-                    { type: ib_token_types.COMMAND, command: info[0], params: info.slice(1) },
-                    { type: ib_token_types.TEXT, text: text },
-                    { type: ib_token_types.COMMAND, command: "end", params: [] }
+                    { type: ib_token_types.COMMAND, inline: true, text: line, command: info[0], params: info.slice(1) },
+                    { type: ib_token_types.TEXT, inlie: true, text: text},
+                    { type: ib_token_types.COMMAND, inline: true, text: "", command: "end", params: [] }
                 ];
             }
         }
@@ -277,12 +285,12 @@ class ib {
         if (command_match) {
             let command = command_match[1];
             let info = command.split(" ");
-            return [{ type: ib_token_types.COMMAND, command: info[0], params: info.slice(1) }];
+            return [{ type: ib_token_types.COMMAND, inline: false, text: line, command: info[0], params: info.slice(1) }];
         }
 
         // if neither matched warn and return text
         info.warn("Malformated command. Lines starting in $ must be a command or inline command. Line will be treated as text.");
-        return [{ type: ib_token_types.TEXT, text: line }];
+        return [{ type: ib_token_types.TEXT, inline: false, text: line }];
 
     }
 
@@ -323,11 +331,8 @@ class ib {
                     case "define":
                         await ib.execute_define(params, body, ctx);
                         break;
-                    case "load":
-                        // html.push(await execute_load(params, variables));
-                        break;
                     case "md":
-                        // html.push(await execute_md(params, variables));
+                        html.push(await ib.execute_md(params, body, ctx));
                         break;
                     default:
                         console.error("Command " + command + " is not supported. Command block will be ignored");
@@ -527,9 +532,15 @@ class ib {
     }
 
     static async execute_define(parameters, body, ctx) {
-        const allowed_modifiers = ["trim"];
+        const allowed_modifiers = ["unscoped", "trim"];
         let [valid, params, modifiers] = this.validate_params("define", parameters, 1, 2, allowed_modifiers);
         if (!valid) return;
+
+        // by default we add a scope to variables
+        let og_ctx = ctx;
+        if (!this.contains(modifiers, "unscoped")) {
+            ctx = this.scope_map(ctx);
+        }
 
         let varName = params[0];
         var varType = params[1];
@@ -562,62 +573,26 @@ class ib {
                 }
         }
 
-        ctx[varName] = value;
+        og_ctx[varName] = value;
     }
 
-    static command_md(token, ctx) {
-        return marked(token.text);
-    }
+    static async execute_md(parameters, body, ctx) {
+        const allowed_modifiers = ["unscoped", "pure"];
+        let [valid, params, modifiers] = this.validate_params("define", parameters, 0, 0, allowed_modifiers);
+        if (!valid) return "";
 
-    //#endregion
-
-    //#region variable
-
-    static async direct_var(name, ctx) {
-        let value = ctx[name];
-
-        if (value == undefined) {
-            console.error("Variable " + name + " undefined.");
-            return "null";
+        // check if we are in pure mode
+        if (this.contains(modifiers, "pure")) {
+            return marked(this.get_original_text_from_tokens(body));
         }
-
-        return value;
-    }
-
-    static async variable(token, ctx) {
-        if (token.info.length == 0) {
-            console.error("Empty variable found.");
-        }
-
-        let var_info = token.info[0].split("->");
-        let name = var_info[0];
-        let modifier = var_info[1];
-
-        let value = this.direct_var(name, ctx);
-
-        switch (modifier) {
-            case "ib":
-                return this.execute(await value, this.scope_map(ctx));
-            case "ib_unscoped":
-                return this.execute(await value, ctx);
-            case "md":
-                return marked(await value);
-            case "get":
-            case "at":
-            case "array": {
-                let index = var_info[2];
-                if (this.is_digit(index[0])) {
-                    index = parseInt(index);
-                }
-                else {
-                    index = await this.direct_var(index, ctx);
-                }
-                return this.promise_array(await value, index);
+        else {
+            // by default we add a scope to variables
+            if (!this.contains(modifiers, "unscoped")) {
+                ctx = this.scope_map(ctx);
             }
-
-            default:
-                return value;
+            return marked(await this.execute_tokens(body, ctx));
         }
+
     }
 
     //#endregion
