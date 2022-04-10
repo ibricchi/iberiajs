@@ -100,13 +100,24 @@ class ib {
         return newString.join("");
     }
 
-    static contains(arr, obj) {
-        if (arr instanceof Array) {
-            return arr.indexOf(obj) > -1;
+    static contains(haystack, needle) {
+        if (!(haystack instanceof Array)) {
+            haystack = Object.keys(haystack);
         }
-        if (arr instanceof Object) {
-            return Object.keys(arr).indexOf(obj) > -1;
+
+        for(let val of haystack) {
+            if(val instanceof RegExp) {
+                if(val.test(needle)) {
+                    val.lastIndex = 0;
+                    return true;
+                }
+                val.lastIndex = 0;
+            }
+            else if(val == needle) {
+                return true;
+            }
         }
+
         return false;
     }
 
@@ -343,13 +354,20 @@ class ib {
     }
 
     static async process_variables(text, ctx) {
-        let variable_regex = /#([^#\\]*(?:\\.[^#\\]*)*)#/g;
-        return await this.asyncStringReplace(text, variable_regex, async (data_str) => {
-            let data = data_str.slice(1, -1).split(" ");
+        // these regexes are fucking disgusting, probably a simpler way to do it but this works
+        // TODO: make this less disgusting
+        // used to match hashes escaped with # and with \
+        let hash_escapes = /(?<!\\)(?:((?:\\\\)*)#|\\((?:\\\\)*))(#)/g;
+        // matches everything between two hashes like quotation marks
+        // ignores any # or \ escaped hashes
+        let variable_regex = /((?<!\\)(?:(?:\\\\)*(?<!#)|\\(?:\\\\)*(?:#))(?:#)(?!#))((?:.(?!((?<!\\)(?:(?:\\\\)*(?<!#)|\\(?:\\\\)*(?:#))(?:#)(?!#))))*.)((?<!\\)(?:(?:\\\\)*(?<!#)|\\(?:\\\\)*(?:#))(?:#)(?!#))/g;
+        return await this.asyncStringReplace(text, variable_regex, async (full_match, g1, g2, g3) => {
+            let left_padding = g1.slice(0, -1);
+            let data = g2.replace(hash_escapes, "$1$2$3").replace(/\\\\/g,"\\").split(" ");
             let variable = data[0];
             let parameters = data.slice(1);
-            return await this.execute_variable(variable, parameters, ctx);
-        })
+            return left_padding + await this.execute_variable(variable, parameters, ctx);
+        });
     }
 
     static async process_single_variable(text, ctx) {
@@ -381,7 +399,12 @@ class ib {
     }
 
     static async execute_variable(variable, parameters, ctx) {
+        const index_regex = /^at\((.*)\)$/g;
         const allowed_modifiers = [
+            // function call
+            "call",
+            // index
+            index_regex,
             // formatting modifiers
             "uppercase", "lowercase", "capitalize", "capitalize-first", "trim",
             // processing modifiers
@@ -407,59 +430,110 @@ class ib {
                 break;
             case "string":
                 value = variable;
-                // apply modifiers
-                for(let modifier of modifiers) {
-                    switch(modifier){
-                        case "uppercase":
-                            value = value.toUpperCase();
-                            break;
-                        case "lowercase":
-                            value = value.toLowerCase();
-                            break;
-                        case "capitalize":
-                            value = value.replace(/\w\S*/g, (txt) => {
-                                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
-                            });
-                            break;
-                        case "capitalize-first":
-                            value = value.charAt(0).toUpperCase() + value.substr(1);
-                            break;
-                        case "trim":
-                            value = value.trim();
-                            break;
-                        case "parse(ib)":
-                            value = await this.execute(value, ctx);
-                            break;
-                        case "parse(md)":
-                            value = marked(await this.execute(value, ctx));
-                            break;
-                        case "parse(puremd)":
-                            value = marked(value);
-                            break;
-                        case "load(ib)":
-                            value = await this.get_ib_file(value, ctx);
-                            break;
-                        case "load(md)":
-                            value = marked(await this.get_ib_file(value, ctx));
-                            break;
-                        case "load(puremd)":
-                            value = marked(await this.get_file(value, ctx));
-                            break;
-                        case "load(text)":
-                            value = await this.get_file(value, ctx);
-                            break;
-                        default:
-                            console.warn(`Modifier ${load_type} is not valid for type string. Will ignore.`);
-                            break;
-                    }
-                }
                 break;
             default:
                 if (params.length == 1 && value_type != "var") {
                     console.warn(`Unkown value type ${value_type}. Will assume variable.`);
                 }
                 value = ib.contains_or_warn(ctx, variable, `Variable ${variable} is not defined. Returning null.`);
+        }
 
+        // apply modifiers
+        for (let modifier of modifiers) {
+            if (value instanceof String) {
+                switch (modifier) {
+                    case "uppercase":
+                        value = value.toUpperCase();
+                        break;
+                    case "lowercase":
+                        value = value.toLowerCase();
+                        break;
+                    case "capitalize":
+                        value = value.replace(/\w\S*/g, (txt) => {
+                            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+                        });
+                        break;
+                    case "capitalize-first":
+                        value = value.charAt(0).toUpperCase() + value.substr(1);
+                        break;
+                    case "trim":
+                        value = value.trim();
+                        break;
+                    case "parse(ib)":
+                        value = await this.execute(value, ctx);
+                        break;
+                    case "parse(md)":
+                        value = marked(await this.execute(value, ctx));
+                        break;
+                    case "parse(puremd)":
+                        value = marked(value);
+                        break;
+                    case "load(ib)":
+                        value = await this.get_ib_file(value, ctx);
+                        break;
+                    case "load(md)":
+                        value = marked(await this.get_ib_file(value, ctx));
+                        break;
+                    case "load(puremd)":
+                        value = marked(await this.get_file(value, ctx));
+                        break;
+                    case "load(text)":
+                        value = await this.get_file(value, ctx);
+                        break;
+                    default:
+                        console.warn(`Modifier ${modifier} is not valid for type string. Will ignore.`);
+                        break;
+                }
+            }
+            else if (typeof(value) == "number") {
+                switch (modifier) {
+                    default:
+                        console.warn(`Modifier ${modifier} is not valid for type number. Will ignore.`);
+                }
+            }
+            else if (value instanceof Array) {
+                switch (modifier) {
+                    default:
+                        // check regex matches
+                        let index_match = index_regex.exec(modifier);
+                        if (index_match) {
+                            let index = await this.float_or_signal_var(index_match[1], ctx);
+                            if (typeof(index) == "number") {
+                                let rounded_index = parseInt(index);
+                                if (rounded_index != index) {
+                                    console.warn(`Index ${index} is not an integer. Will round to ${rounded_index}.`);
+                                }
+                                value = value[rounded_index];
+                            }
+                            else{
+                                console.warn(`Index ${index} is not a number. Will return null.`);
+                                value = null;
+                            }
+                            
+                            break;
+                        }
+                        console.warn(`Modifier ${modifier} is not valid for type array. Will ignore.`);
+                }
+            }
+            else if (value instanceof Function) {
+                if (value.length != 0) {
+                    console.warn(`Modifiers can only be applied to functions with 0 arity. Will ignore all remaining modifiers.`);
+                    return value;
+                }
+                switch (modifier) {
+                    case "call":
+                        value = await value();
+                        break;
+                    default:
+                        console.warn(`Modifier ${modifier} is not valid for type function. Will ignore.`);
+                }
+            }
+            else if (value instanceof Object) {
+                switch (modifier) {
+                    default:
+                        console.warn(`Modifier ${modifier} is not valid for type object. Will ignore.`);
+                }
+            }
         }
 
         return value;
