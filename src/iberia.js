@@ -615,7 +615,7 @@ class ib {
 
         // loop end incrementing
         let loopEnd = params[4].split(",");
-        async function doEnd(bodzy) {
+        async function doEnd(body) {
             for (let i = 0; i < loopEnd.length; i++) {
                 let commandtokens = loopEnd[i].split("+=");
                 let commandVar = commandtokens[0];

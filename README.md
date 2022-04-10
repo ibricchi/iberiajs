@@ -1,5 +1,3 @@
-[![Gitpod ready-to-code](https://img.shields.io/badge/Gitpod-ready--to--code-blue?logo=gitpod)](https://gitpod.io/#https://github.com/IBricchi/iberiajs)
-
 # iberiaJS
 
 ![iberiaJS logo](./logo/logo.png)
@@ -41,22 +39,66 @@ Where text is the string that will be inserted into the target.
 
 ## Iberia formatting
 
-IberiaJS has 2 features added on top of html commands **$ ... $** and variables **# ... #**.
+IberiaJS has 2 features to dynamically format text commands **$ ... $** and variables **# ... #**.
 
 ### Commands
 
 The following commands are currently supported:
+* if
 * for
 * foreach
-* define
-* load
 * md
+
+Commands take the form:
+
+
+```
+$[name of command] [list of parameters]? [list of modifiers]?$
+
+body
+
+$end$ 
+```
+
+eg.
+
+```
+$if #shopping_list var at("length")#$
+$md$
+
+# Shopping List
+
+$foreach item shopping_list alphabetical$
+* #item var capitalize#
+$end$
+
+$end$		
+
+$end$
+```
+
+All command scope variables to their body by default unless the "unscoped" modifier is listed in it's list of modifiers.
+
+#### if
+The if command takes the following form
+```
+$if [condition variable] [modifiers list]?$
+
+body of loop
+
+$end$
+```
+
+The condition variable will be evaluated using default js truthiness. If the expression is evaluated true the body will be included, otherwise it will be ignored.
+
+Additional Modfiers:
+* "not" will only evaluate the body if false
 
 #### for
 The for loop takes the following form:
 
 ```
-$for [variable declarations] [comparison variable] [comparison type] [comparison value] [variable updates]$
+$for [variable declarations] [comparison variable] [comparison type] [comparison value] [variable updates] [modifiers]?$
 
 body of loop
 
@@ -101,104 +143,104 @@ The item variable is the name of the variable that will be used to hold each ite
 
 The array variable is the array that contains all the items being looped through.
 
-There is an optional modifier term that if left blank does nothing. If it is set to one of the following:
-
+Additional modifiers
 * reversed
 * alphabetical
-* alphareverse
+* alphareversed
 * increasing
 * decreasing
-* random
+* randomized
 
-Sorts the array items appropriately.
+Sorts the array items appropriately and are applied in order as they appear.
 
 #### define
 
 The define command takes the following form:
 
 ```
-$define [variable name]
-[body of define]
-$
+$define [variable name] [type]? [modifiers]?$
+body of define
+$end$
 ```
 
-The variable name must follow the naming conventions specified later in the documentation.
+The body will be evaluated and the result will be treated as a string by default, but an optional type can be specified to overrule that.
 
-The body can be any text or numeric value, can include any form of white-space, and will retain all of the information passed to it. This must be preceded by a new line after the variable name. A final new line before  and ended with a new line before the final "\$". To use "\$" in the body, the "\$" must be escaped "\\\$".
+Types are:
+* string
+* number
 
-#### load
+More types are planned to be added later on.
 
-The load command takes the form:
-
-```
-$load [path] [load type]?$
-```
-
-Currently the path must be an absolute path, but in the future the idea is to add relative path support. This path can be a variable string, described later in the documentation.
-
-An optional load type parameter is in place. If left empty the loaded file is inserted as plain text, this would be used if plain html, or simple text files want to be inserted into the file. The other parameters available are:
-
-* ib. This processes the text as iberia formatted html, and processes it accordingly.
-* ib_unscoped. This does the same as above, however it does not create an individual scope for the loaded file. This means variables defined within that file are available on the same scope as the load command, instead of only within the file loaded.
-* md. Any text is formatted as md file. This is currently being parsed by the [marked](https://github.com/markedjs/marked) project. Although the plan is to transition to a hand written parser later on.
+Additional modifiers
+* "trim" removes white space at the start and end of the string, only applies to string type
 
 #### md
 
-Md is similar to the define command:
+The md command takes the following form:
 
 ```
-$md
-[body of md]
+$md [modifiers]?$
+body of md
 $
 ```
 
-The body of the md, must be preceded and followed by new lines, and everything between the new lines is captured as text, this includes all white-space. to use a "\$" in the body it must be escaped "\\\$".
-
 The body is formatted as an md file. This is currently being parsed by the [marked](https://github.com/markedjs/marked) project. Although the plan is to transition to a hand written parser later on.
+
+By default the body is procesed as an ib script allowing for dynamic modification of md file, however, this can be turned off using modifiers.
+
+Additional modifiers:
+* "pure" turns of iberia pre-processing for the body of the command
 
 ### Variables
 
-Simple variable follow the following form:
+Variable follow the following form:
 
 ```
-#[variable name]#
+#[variable name/value] [type]? [modifiers]?#
 ```
 
-Variable names can contain any characters available except for "#" "\$" and the combination "->". It must also be one continuous string with no spaces, and cannot begin with a number or "-" sign.
+Variable might not be a great name for these as they are much more complex than that.
 
-This naming convention is still subject to change as the program is developing.
+The type of a variable by default is "var" unless otherwise specified. In this case the variable name will be used to check the current context and return the value in it.
 
-However the "->" sign can be used to add modifiers to the variable.
+Other types directly use the variable value direclty, and parse acordingly. Currently only "var", "number", and "string" can be specified.
 
-```
-#[variable name]->[modifier]#
-```
-The entire variable command cannot contain any spaces.
+Variable names and values can use escaped spaces "\ " to include spaces if needed.
 
-Modifiers avaiable at the moment are:
+Each modifier is applied one at a time and may only work on certain types.
 
-* ib. This processes the variable value as Iberia formatted html
-* ib_unscoped. This does the same as above, however it does not create an individual scope for the loaded file. This means variables defined within the variables value are available on the same scope as the variable command, instead of only within the file loaded.
-* md. This causes the variable value to be formatted as an md file. This is currently being parsed by the [marked](https://github.com/markedjs/marked) project. Although the plan is to transition to a hand written parser later on.
-* get/at/array. These are used to obtain specific array values at a given index, this follows the form:
-	```
-	#[variable name]->[get or at or array]->[index]#
-	```
-	An index can be either an integer, or a variable name.
+String modifiers:
+* load([format])
+	This will use the value of the string as an absolute path to fetch a file. This will then be parsed depending on the format. Currently the formats supported are:
+	* "ib" Formated as an ibera formated file
+	* "md" Formatted as an md file with ib formatting
+	* "pure md" Formatted as a pure md file
+	* "json" Formatted as a json file and converted into an object
+	* "text" Just loads the text value directly
+* parse([format])
+	This will parse the given text value and has support for the same formats the load modifier, with the execption of text, which would do nothing.
+* uppercase
+	This will convert all text to upercase
+* lowercase
+	This will convert all text to lowercase
+* captitalize
+	This will capitalize all words
+* capitalize-first
+	This will capitalize only the first word
+* trim
+	This will remove leading and traling white space
 
-#### variable strings
+Array/Object modifiers
+* at(index)
+	This will read the value of the index for the given array or object
 
-Some command accept variable strings as one of their inputs. A variable string is a string which at some-point contains a variable nested within it. These strings can have no spaces, so either "%20" must be used if for path, or "&\#32" must be used for html formatted text. Future versions will support escaped spaces.
-
-Variables nested in a string currently do not support modifiers, but still must be surrounded in #'s. If a # is meant to be included in the string the it must be escaped "\\#".
+Function modifiers:
+* call
+	This will call the function directly. Currently only supports 0 arity functions, but in the future will support function parameters.
 
 ## Road Map
 
 In future I would like to add some of the following features:
 
 * Better error messages and handling, with line number and file name.
-	* Especially add variable name checking to ensure variable names are followed.
-* More control flow command "if" and "switch"
-* ib_md, options which would allow using Iberia commands and variables withing md files.
-* Improve escaping characters during parsing.
-* Add variables with modifiers to variable strings.
+* More control flow commands like "switch"
