@@ -363,7 +363,8 @@ class ib {
         let escape_regex = /\\(\\|#)/g;
         return await this.asyncStringReplace(text, variable_regex, async (_full_match, g1, g2, g3) => {
             let left_padding = g1.replace(escape_regex, "$1");
-            let data = `${g2}${g3}`.replace(escape_regex,"$1").split(" ");
+            let data = `${g2}${g3}`.replace(escape_regex,"$1").match(/([^\\\s]|\\.)+/g).map(v => v.replace(/\\ /g, " "));
+            debugger;
             let variable = data[0];
             let parameters = data.slice(1);
             return left_padding + await this.execute_variable(variable, parameters, ctx);
