@@ -301,8 +301,7 @@ class ib {
     static async execute_tokens(tokens, ctx) {
         let html = [];
 
-        for (let i = 0; i < tokens.length; i++) {
-            let token = tokens[i];
+        for (let token of tokens) {
             if (token.type == ib_token_types.TEXT) {
                 html.push(await this.process_variables(token.text, ctx));
             }
@@ -316,13 +315,13 @@ class ib {
                         // html.push(await execute_if(params, body, variables));
                         break;
                     case "for":
-                        html.push(await this.execute_for(params, body, ctx));
+                        html.push(await ib.execute_for(params, body, ctx));
                         break;
                     case "foreach":
-                        html.push(await this.execute_foreach(params, body, ctx));
+                        html.push(await ib.execute_foreach(params, body, ctx));
                         break;
                     case "define":
-                        // html.push(await execute_define(params, body, variables));
+                        await ib.execute_define(params, body, ctx);
                         break;
                     case "load":
                         // html.push(await execute_load(params, variables));
@@ -527,9 +526,43 @@ class ib {
         }
     }
 
-    static command_define(token, ctx) {
-        ctx[token.info[1]] = token.text;
-        return "";
+    static async execute_define(parameters, body, ctx) {
+        const allowed_modifiers = ["trim"];
+        let [valid, params, modifiers] = this.validate_params("define", parameters, 1, 2, allowed_modifiers);
+        if (!valid) return;
+
+        let varName = params[0];
+        var varType = params[1];
+        let value = await ib.execute_tokens(body, ctx);
+
+        switch(varType) {
+            case "number":
+                try{
+                    value = parseFloat(value);
+                }
+                catch(e) {
+                    console.warn(`Could not parse ${value} as a number. Will assume 0.`);
+                    value = 0;
+                }
+                break;
+            default:
+                if(params.length != 1 && varType != "string") {
+                    console.warn(`Unkown variable type ${varType}. Will assume string.`);
+                }
+                // execute string related modifiers
+                for(let modifier of modifiers) {
+                    switch(modifier) {
+                        case "trim":
+                            value = value.trim();
+                            break;
+                        default:
+                            console.warn(`Modifier ${modifier} does not apply to strings. Will assume no action.`);
+                            break;
+                    }
+                }
+        }
+
+        ctx[varName] = value;
     }
 
     static command_md(token, ctx) {
