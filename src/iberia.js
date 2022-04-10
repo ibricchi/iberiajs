@@ -69,37 +69,6 @@ class ib {
         return token && token.type == ib_token_types.COMMAND && token.command == "end";
     }
 
-    static var_string(str, ctx) {
-        let newString = [];
-        for (let i = 0; i < str.length; i++) {
-            if (i + 1 < str.length && str[i] == "\\" && str[i + 1] == "#") {
-                newString.push("#");
-                i++;
-            }
-            else if (str[i] == "#") {
-                let start = i;
-                let end = i + 1;
-                while (end < str.length && str[end] != "#") {
-                    if (end + 1 < str.length && str[end] == "\\" && str[end + 1] == "#") {
-                        str = str.slice(0, end) + str.slice(end + 1);
-                        end++;
-                    }
-                    end++;
-                }
-
-                i = end;
-
-                let name = str.slice(start + 1, end);
-                let value = this.direct_var(name, ctx);
-                newString.push(ctx[name]);
-            }
-            else {
-                newString.push(str[i]);
-            }
-        }
-        return newString.join("");
-    }
-
     static contains(haystack, needle) {
         if (!(haystack instanceof Array)) {
             haystack = Object.keys(haystack);
@@ -270,6 +239,8 @@ class ib {
         // check type and correctness of command
         let command_regex = /^\$(.*)\$$/g;
         let inline_command_regex = /^\$(.*)\$(.*)\$(.*)\$$/g;
+        
+        let param_regex = /((?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)(?:(?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)|(?:[^\\\s]|\\.)+)/g;
 
         // check if line is an inline command
         let inline_command_match = inline_command_regex.exec(line.trim());
@@ -280,8 +251,7 @@ class ib {
             }
             else {
                 let command = inline_command_match[1];
-                let info = command.split(" ");
-                let text = inline_command_match[2];
+                let info = command.match(param_regex).map(param => {if(param[0] != '#') param.replace(/\\\s/g, ' ');});
                 return [
                     { type: ib_token_types.COMMAND, inline: true, text: line, command: info[0], params: info.slice(1) },
                     { type: ib_token_types.TEXT, inlie: true, text: text },
@@ -294,7 +264,7 @@ class ib {
         let command_match = command_regex.exec(line.trim());
         if (command_match) {
             let command = command_match[1];
-            let info = command.split(" ");
+            let info = command.match(param_regex).map(param => {if(param[0] != '#') return param.replace(/\\\s/g, ' '); else return param});
             return [{ type: ib_token_types.COMMAND, inline: false, text: line, command: info[0], params: info.slice(1) }];
         }
 
@@ -364,7 +334,6 @@ class ib {
         return await this.asyncStringReplace(text, variable_regex, async (_full_match, g1, g2, g3) => {
             let left_padding = g1.replace(escape_regex, "$1");
             let data = `${g2}${g3}`.replace(escape_regex,"$1").match(/([^\\\s]|\\.)+/g).map(v => v.replace(/\\ /g, " "));
-            debugger;
             let variable = data[0];
             let parameters = data.slice(1);
             return left_padding + await this.execute_variable(variable, parameters, ctx);
@@ -540,18 +509,8 @@ class ib {
                         let index_match = index_regex.exec(modifier);
                         if (index_match) {
                             let index = await this.constant_or_var_in_var(index_match[1], ctx);
-                            if (typeof(index) == "number") {
-                                let rounded_index = parseInt(index);
-                                if (rounded_index != index) {
-                                    console.warn(`Index ${index} is not an integer. Will round to ${rounded_index}.`);
-                                }
-                                value = value[rounded_index];
-                            }
-                            else{
-                                console.warn(`Index ${index} is not a number. Will return null.`);
-                                value = null;
-                            }
-                            break;
+                            value = value[index];
+                            continue;
                         }
                         console.warn(`Modifier ${modifier} is not valid for type array. Will ignore.`);
                 }
@@ -594,7 +553,7 @@ class ib {
     //#region command
 
     static async execute_if(parameters, body, ctx) {
-        const allowed_modifiers = ["unscoped"];
+        const allowed_modifiers = ["unscoped", "not"];
         let [valid, params, modifiers] = this.validate_params("if", parameters, 1, 1, allowed_modifiers);
         if (!valid) return "";
 
@@ -604,7 +563,7 @@ class ib {
         }
 
         let condition = await ib.process_single_variable(params[0], ctx);
-        if (condition) {
+        if (this.contains(modifiers, "not") ? ! condition: condition) {
             return await this.execute_tokens(body, ctx);
         }
 
