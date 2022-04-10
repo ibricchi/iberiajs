@@ -414,6 +414,8 @@ class ib {
 
     static async execute_variable(variable, parameters, ctx) {
         const index_regex = /^at\((.*)\)$/g;
+        const parse_regex = /^parse\((.*)\)$/g;
+        const load_regex = /^load\((.*)\)$/g;
         const allowed_modifiers = [
             // function call
             "call",
@@ -422,9 +424,9 @@ class ib {
             // formatting modifiers
             "uppercase", "lowercase", "capitalize", "capitalize-first", "trim",
             // processing modifiers
-            "parse(ib)", "parse(md)", "parse(puremd)",
+            parse_regex,
             // load modifiers
-            "load(ib)", "load(md)", "load(puremd)", "load(text)"
+            load_regex,
         ];
         let [valid, params, modifiers] = this.validate_params("variable", parameters, 0, 1, allowed_modifiers);
         if (!valid) return "";
@@ -454,7 +456,7 @@ class ib {
 
         // apply modifiers
         for (let modifier of modifiers) {
-            if (value instanceof String) {
+            if (typeof(value) == "string") {
                 switch (modifier) {
                     case "uppercase":
                         value = value.toUpperCase();
@@ -473,36 +475,55 @@ class ib {
                     case "trim":
                         value = value.trim();
                         break;
-                    case "parse(ib)":
-                        value = await this.execute(value, ctx);
-                        break;
-                    case "parse(md)":
-                        value = marked(await this.execute(value, ctx));
-                        break;
-                    case "parse(puremd)":
-                        value = marked(value);
-                        break;
-                    case "parse(json)":
-                        value = JSON.parse(value);
-                        break;
-                    case "load(ib)":
-                        value = await this.get_ib_file(value, ctx);
-                        break;
-                    case "load(md)":
-                        value = marked(await this.get_ib_file(value, ctx));
-                        break;
-                    case "load(puremd)":
-                        value = marked(await this.get_file(value, ctx));
-                        break;
-                    case "load(json)":
-                        value = JSON.parse(await this.get_file(value, ctx));
-                        break;
-                    case "load(text)":
-                        value = await this.get_file(value, ctx);
-                        break;
                     default:
+                        // check regex matches
+                        let parse_match = parse_regex.exec(modifier);
+                        if (parse_match) {
+                            let parser = parse_match[1];
+                            switch (parser) {
+                                case "ib":
+                                    value = await this.execute(value, ctx);
+                                    break;
+                                case "md":
+                                    value = marked(await this.execute(value, ctx));
+                                    break;
+                                case "puremd":
+                                    value = marked(value);
+                                    break;
+                                case "json":
+                                    value = JSON.parse(value);
+                                    break;
+                                default:
+                                    console.warn(`Unknown parser ${parser}. Will ignore.`);
+                            }
+                            continue;
+                        }
+                        let load_match = load_regex.exec(modifier);
+                        if (load_match) {
+                            let loader = load_match[1];
+                            switch (loader) {
+                                case "ib":
+                                    value = await this.get_ib_file(value, ctx);
+                                    break;
+                                case "md":
+                                    value = marked(await this.get_ib_file(value, ctx));
+                                    break;
+                                case "puremd":
+                                    value = marked(await this.get_file(value, ctx));
+                                    break;
+                                case "json":
+                                    value = JSON.parse(await this.get_file(value, ctx));
+                                    break;
+                                case "text":
+                                    value = await this.get_file(value, ctx);
+                                    break;
+                                default:
+                                    console.warn(`Unknown loader ${loader}. Will return assume text.`);
+                                    value = await this.get_file(value, ctx);
+                            }
+                            continue;
+                        }
                         console.warn(`Modifier ${modifier} is not valid for type string. Will ignore.`);
-                        break;
                 }
             }
             else if (typeof(value) == "number") {
