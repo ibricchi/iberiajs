@@ -124,30 +124,29 @@ class ib {
         let length = parameters.length;
         if (min == max && length != min) {
             if (length < min) {
-                console.warn(`Command ${command} requires exactly ${min} parameters. Command block will be ignored.`);
+                console.warn(`${command[0].toUpperCase()}${command.slice(1)} requires exactly ${min} parameters. Command block will be ignored.`);
                 return [false, [], []];
             }
             else if (allowed_modifiers == []) {
-                console.warn(`Command ${command} requires exactly ${min} parameters. Extra parameters will be ignored.`);
+                console.warn(`${command[0].toUpperCase()}${command.slice(1)} requires exactly ${min} parameters. Extra parameters will be ignored.`);
                 return [true, [parameters.slice(0, max)], []];
             }
         }
         if (length < min) {
-            console.warn(`Command ${command} requires at least ${min} parameters. Command block will be ignored.`);
+            console.warn(`${command[0].toUpperCase()}${command.slice(1)} requires at least ${min} parameters. Command block will be ignored.`);
             return [false, [], []];
         }
         if (allowed_modifiers == [] && length > max) {
-            console.warn(`Command ${command} allows at most ${max} parameters. Extra parameters will be ignored.`);
+            console.warn(`${command[0].toUpperCase()}${command.slice(1)} allows at most ${max} parameters. Extra parameters will be ignored.`);
             return [true, [parameters.slice(0, max)], parameters];
         }
         if (allowed_modifiers != [] && length > max) {
             let params = parameters.slice(0, max);
             let modifiers = [];
-            let modifier_count = length - max;
-            for (let i = max + modifier_count - 1; i < length; i++) {
+            for (let i = max; i < length; i++) {
                 let param = parameters[i];
                 if (!this.contains(allowed_modifiers, param)) {
-                    console.warn(`Command ${command} does not allow modifier ${param}. Modifier will be ignored.`);
+                    console.warn(`${command[0].toUpperCase()}${command.slice(1)} does not allow modifier ${param}. Modifier will be ignored.`);
                 }
                 else {
                     modifiers.push(param);
@@ -335,7 +334,7 @@ class ib {
                         html.push(await ib.execute_md(params, body, ctx));
                         break;
                     default:
-                        console.error("Command " + command + " is not supported. Command block will be ignored");
+                        console.error(`Command ${command} is not supported. Command block will be ignored`);
                 }
             }
         };
@@ -382,7 +381,14 @@ class ib {
     }
 
     static async execute_variable(variable, parameters, ctx) {
-        let allowed_modifiers = [/^load\([a-zA-z]\)$/g];
+        const allowed_modifiers = [
+            // formatting modifiers
+            "uppercase", "lowercase", "capitalize", "capitalize-first", "trim",
+            // processing modifiers
+            "parse(ib)", "parse(md)", "parse(puremd)",
+            // load modifiers
+            "load(ib)", "load(md)", "load(puremd)", "load(text)"
+        ];
         let [valid, params, modifiers] = this.validate_params("variable", parameters, 0, 1, allowed_modifiers);
         if (!valid) return "";
 
@@ -401,6 +407,52 @@ class ib {
                 break;
             case "string":
                 value = variable;
+                // apply modifiers
+                for(let modifier of modifiers) {
+                    switch(modifier){
+                        case "uppercase":
+                            value = value.toUpperCase();
+                            break;
+                        case "lowercase":
+                            value = value.toLowerCase();
+                            break;
+                        case "capitalize":
+                            value = value.replace(/\w\S*/g, (txt) => {
+                                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+                            });
+                            break;
+                        case "capitalize-first":
+                            value = value.charAt(0).toUpperCase() + value.substr(1);
+                            break;
+                        case "trim":
+                            value = value.trim();
+                            break;
+                        case "parse(ib)":
+                            value = await this.execute(value, ctx);
+                            break;
+                        case "parse(md)":
+                            value = marked(await this.execute(value, ctx));
+                            break;
+                        case "parse(puremd)":
+                            value = marked(value);
+                            break;
+                        case "load(ib)":
+                            value = await this.get_ib_file(value, ctx);
+                            break;
+                        case "load(md)":
+                            value = marked(await this.get_ib_file(value, ctx));
+                            break;
+                        case "load(puremd)":
+                            value = marked(await this.get_file(value, ctx));
+                            break;
+                        case "load(text)":
+                            value = await this.get_file(value, ctx);
+                            break;
+                        default:
+                            console.warn(`Modifier ${load_type} is not valid for type string. Will ignore.`);
+                            break;
+                    }
+                }
                 break;
             default:
                 if (params.length == 1 && value_type != "var") {
