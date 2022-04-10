@@ -354,16 +354,16 @@ class ib {
     }
 
     static async process_variables(text, ctx) {
-        // these regexes are fucking disgusting, probably a simpler way to do it but this works
-        // TODO: make this less disgusting
-        // used to match hashes escaped with # and with \
-        let hash_escapes = /(?<!\\)(?:((?:\\\\)*)#|\\((?:\\\\)*))(#)/g;
-        // matches everything between two hashes like quotation marks
-        // ignores any # or \ escaped hashes
-        let variable_regex = /((?<!\\)(?:(?:\\\\)*(?<!#)|\\(?:\\\\)*(?:#))(?:#)(?!#))((?:.(?!((?<!\\)(?:(?:\\\\)*(?<!#)|\\(?:\\\\)*(?:#))(?:#)(?!#))))*.)((?<!\\)(?:(?:\\\\)*(?<!#)|\\(?:\\\\)*(?:#))(?:#)(?!#))/g;
-        return await this.asyncStringReplace(text, variable_regex, async (full_match, g1, g2, g3) => {
-            let left_padding = g1.slice(0, -1);
-            let data = g2.replace(hash_escapes, "$1$2$3").replace(/\\\\/g,"\\").split(" ");
+        // this is somewhat cleaner but still ugly as fuck
+        // regex matches a non escaped strting # followed by anything up till a non escaped #
+        // group 1 is any escaped \ or #
+        // group 2 is eveything between the two hashes (excluding the hashes and any escapes at the end)
+        // group 3 is any escaped \ or # at the end of the string imediately befor the final closing #
+        let variable_regex = /(?:(?<!\\)((?:\\\\)*)#|(?:\\(?:\\\\)*#)#)((?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)((?:\\\\)*)#|(\\(?:\\\\)*#)#)/g;
+        let escape_regex = /\\(\\|#)/g;
+        return await this.asyncStringReplace(text, variable_regex, async (_full_match, g1, g2, g3) => {
+            let left_padding = g1.replace(escape_regex, "$1");
+            let data = `${g2}${g3}`.replace(escape_regex,"$1").split(" ");
             let variable = data[0];
             let parameters = data.slice(1);
             return left_padding + await this.execute_variable(variable, parameters, ctx);
@@ -382,7 +382,7 @@ class ib {
         return await this.execute_variable(data[0], data.slice(1), ctx);
     }
 
-    static async float_or_signal_var(text, ctx) {
+    static async float_or_single_var(text, ctx) {
         if (text[0] == "#") {
             return await this.process_single_variable(text, ctx);
         }
@@ -396,6 +396,20 @@ class ib {
                 return v;
             }
         }
+    }
+
+    static async constant_or_var_in_var(text, ctx) {
+        // check for constant number
+        let v = parseFloat(text);
+        if(!isNaN(v)) {
+            return v;
+        }
+        // check for string
+        if (text[0] == '"') {
+            return text.slice(1, -1);
+        }
+        // assume variable if not
+        return await this.process_single_variable(`#${text}#`, ctx);
     }
 
     static async execute_variable(variable, parameters, ctx) {
@@ -468,6 +482,9 @@ class ib {
                     case "parse(puremd)":
                         value = marked(value);
                         break;
+                    case "parse(json)":
+                        value = JSON.parse(value);
+                        break;
                     case "load(ib)":
                         value = await this.get_ib_file(value, ctx);
                         break;
@@ -476,6 +493,9 @@ class ib {
                         break;
                     case "load(puremd)":
                         value = marked(await this.get_file(value, ctx));
+                        break;
+                    case "load(json)":
+                        value = JSON.parse(await this.get_file(value, ctx));
                         break;
                     case "load(text)":
                         value = await this.get_file(value, ctx);
@@ -497,7 +517,7 @@ class ib {
                         // check regex matches
                         let index_match = index_regex.exec(modifier);
                         if (index_match) {
-                            let index = await this.float_or_signal_var(index_match[1], ctx);
+                            let index = await this.constant_or_var_in_var(index_match[1], ctx);
                             if (typeof(index) == "number") {
                                 let rounded_index = parseInt(index);
                                 if (rounded_index != index) {
@@ -509,7 +529,6 @@ class ib {
                                 console.warn(`Index ${index} is not a number. Will return null.`);
                                 value = null;
                             }
-                            
                             break;
                         }
                         console.warn(`Modifier ${modifier} is not valid for type array. Will ignore.`);
@@ -517,8 +536,8 @@ class ib {
             }
             else if (value instanceof Function) {
                 if (value.length != 0) {
-                    console.warn(`Modifiers can only be applied to functions with 0 arity. Will ignore all remaining modifiers.`);
-                    return value;
+                    console.warn(`Modifiers can only be applied to functions with 0 arity. Will return null.`);
+                    value = null;
                 }
                 switch (modifier) {
                     case "call":
@@ -529,8 +548,19 @@ class ib {
                 }
             }
             else if (value instanceof Object) {
+                if (value == null) {
+                    console.warn(`Modifiers cannot be applied to null. Will ignore remaining modifiers.`);
+                    return null;
+                }
                 switch (modifier) {
                     default:
+                        // check regex matches
+                        let index_match = index_regex.exec(modifier);
+                        if (index_match) {
+                            let index = await this.constant_or_var_in_var(index_match[1], ctx);
+                            value = value[index];
+                            continue;
+                        }
                         console.warn(`Modifier ${modifier} is not valid for type object. Will ignore.`);
                 }
             }
@@ -573,7 +603,7 @@ class ib {
         for (let i = 0; i < loopVariables.length; i++) {
             let loopVariable = loopVariables[i].split("=");
             let varName = loopVariable[0];
-            let varValue = loopVariable.length == 2 ? await ib.float_or_signal_var(loopVariable[1], ctx) : 0
+            let varValue = loopVariable.length == 2 ? await ib.float_or_single_var(loopVariable[1], ctx) : 0
             ctx[varName] = varValue;
         }
 
@@ -583,7 +613,7 @@ class ib {
         let loopCompConst = params[3];
         async function checkCondition() {
             let left = ib.contains_or_warn(ctx, loopCompVar, `Loop left comparison variable ${loopCompVar} does not exist in context. Will always assume false.`);
-            let right = await ib.float_or_signal_var(loopCompConst, ctx)
+            let right = await ib.float_or_single_var(loopCompConst, ctx)
             if (left == null | right == null) return false;
             switch (loopCompComp) {
                 case "==":
