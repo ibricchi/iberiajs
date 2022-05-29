@@ -163,7 +163,7 @@ body of define
 $end$
 ```
 
-The body will be evaluated and the result will be treated as a string by default, but an optional type can be specified to overrule that.
+The body will be evaluated and the result will be treated as a string by default, but an optional type can be specified to overrule that. By default the after any modifiers, the body of a string will have the whitespace at begining and end trimmed.
 
 Types are:
 * string
@@ -172,7 +172,8 @@ Types are:
 More types are planned to be added later on.
 
 Additional modifiers
-* "trim" removes white space at the start and end of the string, only applies to string type
+* "trim" removes white space at the start and end of the string imediately, only applies to string type
+* "notrim" prevents the atuomatic trimming after processing for strings, only applies to string type
 
 #### md
 

@@ -711,7 +711,7 @@ class ib {
     }
 
     static async execute_define(parameters, body, ctx) {
-        const allowed_modifiers = ["unscoped", "trim"];
+        const allowed_modifiers = ["unscoped", "trim", "notrim"];
         let [valid, params, modifiers] = this.validate_params("define", parameters, 1, 2, allowed_modifiers);
         if (!valid) return;
 
@@ -725,6 +725,8 @@ class ib {
         var varType = params[1];
         let value = await ib.execute_tokens(body, ctx);
 
+        let trim_after = true;
+        
         switch (varType) {
             case "number":
                 let v = parseFloat(value);
@@ -746,11 +748,18 @@ class ib {
                         case "trim":
                             value = value.trim();
                             break;
+                        case "notrim":
+                            trim_after = false;
+                            break;
                         default:
                             console.warn(`Modifier ${modifier} does not apply to strings. Will assume no action.`);
                             break;
                     }
                 }
+        }
+
+        if (trim_after) {
+            value = value.trim();
         }
 
         og_ctx[varName] = value;
