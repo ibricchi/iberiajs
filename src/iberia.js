@@ -329,7 +329,7 @@ class ib {
         // group 1 is any escaped \ or #
         // group 2 is eveything between the two hashes (excluding the hashes and any escapes at the end)
         // group 3 is any escaped \ or # at the end of the string imediately befor the final closing #
-        let variable_regex = /(?:(?<!\\)((?:\\\\)*)#|(?:\\(?:\\\\)*#)#)((?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)((?:\\\\)*)#|(\\(?:\\\\)*#)#)/g;
+        let variable_regex = /((?<!\\)(?:(?:\\\\)*)|(?:\\(?:\\\\)*#))#((?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)((?:\\\\)*)#|(\\(?:\\\\)*#)#)/g;
         let escape_regex = /\\(\\|#)/g;
         return await this.asyncStringReplace(text, variable_regex, async (_full_match, g1, g2, g3) => {
             let left_padding = g1.replace(escape_regex, "$1");
