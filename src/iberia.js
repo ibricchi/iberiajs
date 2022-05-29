@@ -251,7 +251,8 @@ class ib {
             }
             else {
                 let command = inline_command_match[1];
-                let info = command.match(param_regex).map(param => {if(param[0] != '#') param.replace(/\\\s/g, ' ');});
+                let text = inline_command_match[2];
+                let info = command.match(param_regex).map(param => {if(param[0] != '#') return param.replace(/\\\s/g, ' ');});
                 return [
                     { type: ib_token_types.COMMAND, inline: true, text: line, command: info[0], params: info.slice(1) },
                     { type: ib_token_types.TEXT, inlie: true, text: text },
@@ -313,6 +314,9 @@ class ib {
                         break;
                     case "md":
                         html.push(await ib.execute_md(params, body, ctx));
+                        break;
+                    case "scope":
+                        html.push(await ib.execute_scope(params, body, ctx));
                         break;
                     default:
                         console.error(`Command ${command} is not supported. Command block will be ignored`);
@@ -782,6 +786,23 @@ class ib {
             return marked(await this.execute_tokens(body, ctx));
         }
 
+    }
+
+    static async execute_scope(parameters, body, ctx) {
+        const allowed_modifiers = ["empty"];
+        let [valid, params, modifiers] = this.validate_params("scope", parameters, 0, 0, allowed_modifiers);
+        if (!valid) return "";
+
+        let new_ctx;
+        // check if we are in an empty scope
+        if (this.contains(modifiers, "empty")) {
+            new_ctx = {};
+        }
+        else {
+            new_ctx = this.scope_map(ctx);
+        }
+
+        return await ib.execute_tokens(body, new_ctx);
     }
 
     //#endregion

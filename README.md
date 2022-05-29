@@ -182,7 +182,7 @@ The md command takes the following form:
 ```
 $md [modifiers]?$
 body of md
-$
+$end$
 ```
 
 The body is formatted as an md file. This is currently being parsed by the [marked](https://github.com/markedjs/marked) project. Although the plan is to transition to a hand written parser later on.
@@ -191,6 +191,23 @@ By default the body is procesed as an ib script allowing for dynamic modificatio
 
 Additional modifiers:
 * "pure" turns of iberia pre-processing for the body of the command
+
+#### scope
+
+The scope command takes teh following form:
+
+```
+$scope [modifiers]?$
+body of scope
+$end$
+```
+
+The scope command creates a new variable scope around the body.
+
+By default this creates a copy of current context, but a completly fresh context can be created using modifers.
+
+Additional modifiers:
+* "empty" creates an empty context for the body instead of copying the exisitng one.
 
 ### Variables
 
