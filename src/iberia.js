@@ -52,6 +52,27 @@ class ib {
         let html = await this.get_ib_file(path, ctx);
         this.insert_text(destination, html);
     }
+    
+    static async onload(){
+        if (!ib.onload_ctx) ib.onload_ctx = {};
+        document.querySelectorAll("*[ib]").forEach(async el => {
+            let ctx = this.scope_map(ib.onload_ctx);
+            let text = el.innerHTML;
+            let html = await this.execute(text, ctx);
+            el.innerHTML = html;
+            if (el.hasAttribute("hidden")) {
+                el.removeAttribute("hidden");
+            }
+            if (ctx["callback"] && ib.callbacks && ib.callbacks[ctx["callback"]]) {
+                ib.callbacks[ctx["callback"]](el);
+            }
+        })
+    }
+
+    static register_callback(name, callback) {
+        if(!ib.callbacks) ib.callbacks = {};
+        ib.callbacks[name] = callback;
+    }
 
     //#endregion
 
@@ -390,6 +411,7 @@ class ib {
         const index_regex = /^at\((.*)\)$/g;
         const parse_regex = /^parse\((.*)\)$/g;
         const load_regex = /^load\((.*)\)$/g;
+        const define_regex = /^define\((.*)\)$/g;
         const allowed_modifiers = [
             // function call
             "call",
@@ -401,6 +423,8 @@ class ib {
             parse_regex,
             // load modifiers
             load_regex,
+            // define modifers
+            define_regex,
         ];
         let [valid, params, modifiers] = this.validate_params("variable", parameters, 0, 1, allowed_modifiers);
         if (!valid) return "";
@@ -430,6 +454,20 @@ class ib {
 
         // apply modifiers
         for (let modifier of modifiers) {
+            let define_match = define_regex.exec(modifier);
+            if (define_match) {
+                let var_name = define_match[1];
+                if (var_name == ""){
+                    Object.keys(value).forEach((key) => {
+                        ctx[key] = value[key];
+                    });
+                }
+                else {
+                    ctx[var_name] = value;    
+                }
+                value = "";
+                continue;
+            }
             if (typeof(value) == "string") {
                 switch (modifier) {
                     case "uppercase":
