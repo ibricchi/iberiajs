@@ -1,5 +1,3 @@
-import("./marked.min.js");
-
 //#region ib_classes
 
 const ib_token_types = {
@@ -497,10 +495,10 @@ class ib {
                                     value = await this.execute(value, ctx);
                                     break;
                                 case "md":
-                                    value = marked(await this.execute(value, ctx));
+                                    value = marked.parse(await this.execute(value, ctx));
                                     break;
                                 case "puremd":
-                                    value = marked(value);
+                                    value = marked.parse(value);
                                     break;
                                 case "json":
                                     value = JSON.parse(value);
@@ -518,10 +516,10 @@ class ib {
                                     value = await this.get_ib_file(value, ctx);
                                     break;
                                 case "md":
-                                    value = marked(await this.get_ib_file(value, ctx));
+                                    value = marked.parse(await this.get_ib_file(value, ctx));
                                     break;
                                 case "puremd":
-                                    value = marked(await this.get_file(value, ctx));
+                                    value = marked.parse(await this.get_file(value, ctx));
                                     break;
                                 case "json":
                                     value = JSON.parse(await this.get_file(value, ctx));
@@ -745,7 +743,7 @@ class ib {
             case "ib":
                 return this.get_ib_html(loadPath, ctx)
             case "md": {
-                return marked(await this.get_file(loadPath));
+                return marked.parse(await this.get_file(loadPath));
             }
             default:
                 return this.get_file(loadPath);
@@ -814,14 +812,14 @@ class ib {
 
         // check if we are in pure mode
         if (this.contains(modifiers, "pure")) {
-            return marked(this.get_original_text_from_tokens(body));
+            return marked.parse(this.get_original_text_from_tokens(body));
         }
         else {
             // by default we add a scope to variables
             if (!this.contains(modifiers, "unscoped")) {
                 ctx = this.scope_map(ctx);
             }
-            return marked(await this.execute_tokens(body, ctx));
+            return marked.parse(await this.execute_tokens(body, ctx));
         }
 
     }
