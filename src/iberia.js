@@ -259,7 +259,8 @@ class ib {
         let command_regex = /^\$(.*)\$$/g;
         let inline_command_regex = /^\$(.*)\$(.*)\$(.*)\$$/g;
         
-        let param_regex = /((?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)(?:(?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)|(?:[^\\\s]|\\.)+)/g;
+        // let param_regex = /((?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)(?:(?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)|(?:[^\\\s]|\\.)+)/g;
+        let param_regex = /((?:[^\\](?:(?:\\\\)*)|(?:\\(?:\\\\)*#))#(?:(?:(?:[^#\\])|(?:\\(?:\\\\)*.))*)(?:)#|(?:[^\s]+))/g;
 
         // check if line is an inline command
         let inline_command_match = inline_command_regex.exec(line.trim());
@@ -271,7 +272,8 @@ class ib {
             else {
                 let command = inline_command_match[1];
                 let text = inline_command_match[2];
-                let info = command.match(param_regex).map(param => {if(param[0] != '#') return param.replace(/\\\s/g, ' ');});
+                let info = command.match(param_regex)
+                info = info.map(param => {if(param[0] != '#') return param.replace(/\\\s/g, ' ');});
                 return [
                     { type: ib_token_types.COMMAND, inline: true, text: line, command: info[0], params: info.slice(1) },
                     { type: ib_token_types.TEXT, inlie: true, text: text },
@@ -352,19 +354,23 @@ class ib {
         // group 1 is any escaped \ or #
         // group 2 is eveything between the two hashes (excluding the hashes and any escapes at the end)
         // group 3 is any escaped \ or # at the end of the string imediately befor the final closing #
-        let variable_regex = /((?<!\\)(?:(?:\\\\)*)|(?:\\(?:\\\\)*#))#((?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)((?:\\\\)*)#|(\\(?:\\\\)*#)#)/g;
+        // let variable_regex = /((?<!\\)(?:(?:\\\\)*)|(?:\\(?:\\\\)*#))#((?:.(?!(?:(?<!\\)(?:(?:\\\\)*)#|(?:\\(?:\\\\)*#)#)))*.)(?:(?<!\\)((?:\\\\)*)#|(\\(?:\\\\)*#)#)/g;
+        let variable_regex = /([^\\](?:(?:\\\\)*)|(?:\\(?:\\\\)*#))#((?:(?:[^#\\])|(?:\\(?:\\\\)*.))*)()#/g;
         let escape_regex = /\\(\\|#)/g;
         return await this.asyncStringReplace(text, variable_regex, async (_full_match, g1, g2, g3) => {
             let left_padding = g1.replace(escape_regex, "$1");
             let data = `${g2}${g3}`.replace(escape_regex,"$1").match(/([^\\\s]|\\.)+/g).map(v => v.replace(/\\ /g, " "));
             let variable = data[0];
             let parameters = data.slice(1);
-            return left_padding + await this.execute_variable(variable, parameters, ctx);
+            let asd =  left_padding + await this.execute_variable(variable, parameters, ctx);
+            return asd;
         });
     }
 
     static async process_single_variable(text, ctx) {
-        let variable_regex = /^#([^#\\]*(?:\\.[^#\\]*)*)#$/g;
+        text = text.trim();
+        // let variable_regex = /^#([^#\\]*(?:\\.[^#\\]*)*)#$/g;
+        let variable_regex = /^#.*#$/g;
         if (!variable_regex.test(text)) {
             console.warn(`Expected variable in the form "#[variable name] [List of modifiers]?# but found ${text}. Will return null.`);
             return null;
